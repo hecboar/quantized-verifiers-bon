@@ -26,8 +26,9 @@ class TestRTN:
         w = torch.randn(8, 128)
         q = quantize_rtn(w, bits=4, group_size=128)
         step = (2 * w.abs().amax(dim=1, keepdim=True)) / 15
-        # scales are rounded to fp16 (packed-kernel format): relative slack 1e-3
-        assert torch.all((w - q).abs() <= step / 2 * (1 + 1e-3) + 1e-6)
+        # scales rounded to fp16 (rel. error <= 2^-11) and the extreme level is
+        # 7.5 steps from zero -> slack of 15 * 2^-11 relative to the half step
+        assert torch.all((w - q).abs() <= step / 2 * (1 + 15 * 2**-11) + 1e-6)
 
     def test_8bit_nearly_lossless(self):
         w = torch.randn(32, 64)
