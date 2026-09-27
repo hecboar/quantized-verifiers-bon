@@ -1,0 +1,82 @@
+# Single source of truth for the RunPod grid (plan-neurocomputing.md §4, §5, §7).
+# Frozen before test scores are opened; changes after phase 1 must be logged.
+
+seeds:
+  manifest: 20260927
+  subsets: 7
+  tiebreak: 11
+
+data:
+  eval: {gsm8k_test: 800, math500: 400}
+  dev: {gsm8k_train: 200, math_train: 200}
+  dev_scored_per_condition: 100     # dev questions scored under every condition (C3, gate)
+  gen2_subset: 300                  # eval questions for the second generator
+  gate_questions: 100               # dev questions used by the phase-1 gate
+
+generation:
+  candidates_per_question: 32
+  seeds: [0, 1, 2, 3]
+  per_seed: 8
+  temperature: 0.8
+  top_p: 1.0
+  max_tokens: 1024                  # fixed in phase 0, never changed after
+  primary_candidates: [qwen2.5-1.5b, qwen2.5-math-1.5b]   # chosen at the gate
+  secondary: llama3.2-3b
+
+selection:
+  budgets: [1, 2, 4, 8, 16, 32]
+  repeats: 200
+  vote_temperature: fit_on_dev
+
+verifiers: [sky-1.7b, sky-4b, sky-8b, prm-7b]
+
+conditions:
+  bf16:      {method: none}
+  nf4:       {method: nf4}
+  gptq-w4:   {method: gptq, bits: 4, group_size: 128, calib: generic}
+  gptq-w3:   {method: gptq, bits: 3, group_size: 128, calib: generic}
+  awq-w4:    {method: awq,  bits: 4, group_size: 128, calib: generic}
+  rtn-w4:    {method: rtn,  bits: 4, group_size: 128}
+  rtn-w8:    {method: rtn,  bits: 8, group_size: null}
+
+calibration:
+  n_sequences: 128
+  anchor_frac: 0.25
+  boundary_frac: 0.75
+  generic_source: wikitext        # wikitext-2-raw-v1 train, 512-token chunks
+  generic_chunk_tokens: 512
+  lambda_grid: [0.5, 2.0, 8.0]    # CH-GPTQ lambda chosen on dev, then frozen
+
+phases:
+  phase3_main:
+    grid:
+      verifiers: [sky-1.7b, sky-4b, sky-8b, prm-7b]
+      conditions: [bf16, nf4, gptq-w4]
+    extra:
+      - {verifier: sky-8b, condition: gptq-w3}
+      - {verifier: prm-7b, condition: gptq-w3}
+      - {verifier: sky-4b, condition: awq-w4}
+      - {verifier: sky-8b, condition: awq-w4}
+  phase4_gen2:
+    generator: secondary
+    runs:
+      - {verifier: sky-4b, condition: bf16}
+      - {verifier: sky-4b, condition: gptq-w4}
+      - {verifier: sky-4b, condition: ch-gptq-w4}
+      - {verifier: prm-7b, condition: bf16}
+      - {verifier: prm-7b, condition: gptq-w4}
+      - {verifier: prm-7b, condition: nf4}
+  phase5_ch:
+    bits: 4
+    recipes: [random, dpq, ch, ch_shuffled]
+    seeds: {sky-8b: [0, 1, 2], sky-4b: [0, 1]}
+  dev_numeric_controls:
+    runs:
+      - {verifier: sky-4b, condition: rtn-w4}
+      - {verifier: sky-4b, condition: rtn-w8}
+
+budget:
+  eur_per_hour: 0.69
+  submission_ceiling_eur: 71
+  reserve_eur: 29
+  overhead_frac: 0.15

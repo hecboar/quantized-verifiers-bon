@@ -55,8 +55,11 @@ def gptq_quantize(
     group_size: int | None = 128,
     damp: float = 0.01,
     block_size: int = 128,
-) -> torch.Tensor:
-    """Returns dequantized weights (same shape/dtype as w). No act-order."""
+    return_params: bool = False,
+):
+    """Returns dequantized weights (same shape/dtype as w); with
+    return_params also the per-group scales and zeros [out, n_groups].
+    No act-order (static groups, required for packed-kernel export)."""
     dtype = w.dtype
     W = w.clone().float()
     H = h.clone().float().to(W.device)
@@ -74,8 +77,11 @@ def gptq_quantize(
 
     Q = torch.zeros_like(W)
     scale = zero = None
+    all_scales, all_zeros = [], []
     if group_size is None:
         scale, zero = sym_params(W, bits)
+        all_scales.append(scale)
+        all_zeros.append(zero)
 
     for i1 in range(0, cols, block_size):
         i2 = min(i1 + block_size, cols)
@@ -89,6 +95,8 @@ def gptq_quantize(
             if group_size is not None and col % group_size == 0:
                 # reference quirk: params from W (not W1) for the group
                 scale, zero = sym_params(W[:, col : col + group_size], bits)
+                all_scales.append(scale)
+                all_zeros.append(zero)
             w_col = W1[:, i : i + 1]
             d = Hinv1[i, i]
             q = quantize_with(w_col, scale, zero, bits)
@@ -99,4 +107,6 @@ def gptq_quantize(
         Q[:, i1:i2] = Q1
         W[:, i2:] -= Err1 @ Hinv[i1:i2, i2:]
 
+    if return_params:
+        return Q.to(dtype), torch.cat(all_scales, dim=1), torch.cat(all_zeros, dim=1)
     return Q.to(dtype)

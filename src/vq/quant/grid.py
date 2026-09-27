@@ -24,7 +24,9 @@ def sym_params(x: torch.Tensor, bits: int) -> tuple[torch.Tensor, torch.Tensor]:
     maxq = 2**bits - 1
     xmax = x.abs().amax(dim=1, keepdim=True)
     xmax = torch.where(xmax == 0, torch.ones_like(xmax), xmax)
-    scale = 2 * xmax / maxq
+    # fp16-representable scales: packed kernels store fp16 scales, so fake-quant
+    # and packed execution use bit-identical dequantized weights
+    scale = (2 * xmax / maxq).half().float()
     zero = torch.full_like(scale, (maxq + 1) / 2)
     return scale, zero
 
@@ -35,15 +37,20 @@ def quantize_with(x: torch.Tensor, scale: torch.Tensor, zero: torch.Tensor, bits
     return scale * (q - zero)
 
 
-def quantize_rtn(w: torch.Tensor, bits: int, group_size: int | None) -> torch.Tensor:
+def quantize_rtn(w: torch.Tensor, bits: int, group_size: int | None, return_params: bool = False):
     dtype = w.dtype
     x = w.float()
     out = torch.empty_like(x)
     step = group_size or x.shape[1]
+    scales, zeros = [], []
     for g in range(0, x.shape[1], step):
         blk = x[:, g : g + step]
         scale, zero = sym_params(blk, bits)
         out[:, g : g + step] = quantize_with(blk, scale, zero, bits)
+        scales.append(scale)
+        zeros.append(zero)
+    if return_params:
+        return out.to(dtype), torch.cat(scales, dim=1), torch.cat(zeros, dim=1)
     return out.to(dtype)
 
 

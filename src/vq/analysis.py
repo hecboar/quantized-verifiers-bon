@@ -1,0 +1,94 @@
+"""CPU analysis over stored scores: per-condition metrics, confirmatory
+contrasts (Holm), and the phase-1 gate (plan §6, §8)."""
+from __future__ import annotations
+
+import numpy as np
+
+from .metrics import (
+    accuracy_per_question,
+    harm_benefit,
+    oracle_per_question,
+    random_per_question,
+    winner_change_rate,
+)
+from .selection import draw_subsets, select_bon, select_vote, tiebreak_priority
+from .stats import holm, paired_bootstrap
+from .store import CampaignStore
+
+
+def score_matrix(store: CampaignStore, generator: str, verifier: str, condition: str, split: str, score_col: str = "score"):
+    """Returns (scores [Q,C], correct [Q,C], answer keys [Q,C], question ids)."""
+    cands = store.read("candidates", f"{generator}__{split}")
+    s = store.read("scores", f"{generator}__{verifier}__{condition}")
+    s = s[s["split"] == split]
+    df = cands.merge(s[["question_id", "cand", score_col]], on=["question_id", "cand"], how="inner")
+    df = df.sort_values(["question_id", "cand"], kind="stable")
+    qids = sorted(df["question_id"].unique())
+    C = df.groupby("question_id").size()
+    if C.nunique() != 1:
+        raise ValueError("unequal pool sizes across questions")
+    shape = (len(qids), int(C.iloc[0]))
+    return (
+        df[score_col].to_numpy(float).reshape(shape),
+        df["correct"].to_numpy(bool).reshape(shape),
+        df["answer_key"].to_numpy(int).reshape(shape),
+        qids,
+    )
+
+
+def condition_metrics(
+    store: CampaignStore, generator: str, verifier: str, condition: str,
+    budgets=(1, 2, 4, 8, 16, 32), repeats: int = 200, seed: int = 7, split: str = "eval",
+    vote_temperature: float | None = 1.0, reference: str = "bf16",
+) -> dict:
+    ref, correct, keys, _ = score_matrix(store, generator, verifier, reference, split)
+    q, _, _, _ = score_matrix(store, generator, verifier, condition, split)
+    Q, C = ref.shape
+    prio = tiebreak_priority(Q, C, seed + 1)
+    out = {}
+    for n in budgets:
+        if n > C:
+            continue
+        subsets = draw_subsets(Q, C, n, repeats, seed)
+        w_ref, w_q = select_bon(ref, subsets, prio), select_bon(q, subsets, prio)
+        h, b = harm_benefit(correct, w_ref, w_q)
+        r = {
+            "acc_ref": accuracy_per_question(correct, w_ref),
+            "acc_q": accuracy_per_question(correct, w_q),
+            "H": h,
+            "B": b,
+            "winner_change": winner_change_rate(w_ref, w_q),
+            "random": random_per_question(correct, subsets),
+            "oracle": oracle_per_question(correct, subsets),
+        }
+        if vote_temperature is not None:
+            r["vote_q"] = accuracy_per_question(correct, select_vote(q, keys, subsets, prio, vote_temperature))
+            r["majority"] = accuracy_per_question(correct, select_vote(q, keys, subsets, prio, None))
+        out[n] = r
+    return out
+
+
+def confirmatory(per_question_contrasts: dict[str, np.ndarray], n_boot: int = 10_000, seed: int = 0) -> dict:
+    """The three pre-registered contrasts (plan §6); Holm across them."""
+    res = {k: paired_bootstrap({"d": v}, contrast=lambda d: d["d"], n_boot=n_boot, seed=seed)
+           for k, v in per_question_contrasts.items()}
+    adj = holm(np.array([res[k]["p_value"] for k in res]))
+    for k, p in zip(res, adj):
+        res[k]["p_holm"] = float(p)
+    return res
+
+
+def mixed_fraction(correct: np.ndarray) -> float:
+    return float((correct.any(axis=1) & ~correct.all(axis=1)).mean())
+
+
+def evaluate_gate(acc_bf16_32: float, acc_random_32: float, mixed_frac: float, projected_eur: float,
+                  implementation_ok: bool, ceiling: float = 71.0) -> dict:
+    """Phase-1 gate on development data only (plan §8). No damage required."""
+    crit = {
+        "implementation_ok": bool(implementation_ok),
+        "bf16_useful": acc_bf16_32 - acc_random_32 >= 0.05,
+        "mixed_pools": mixed_frac >= 0.30,
+        "budget_ok": projected_eur <= ceiling,
+    }
+    return {"go": all(crit.values()), "criteria": crit}
