@@ -161,9 +161,9 @@ def cmd_generate(args) -> None:
     if store.done("raw_candidates", name):
         print(f"{name} exists, skipping")
         return
-    df = generate_pool(GENERATORS[args.generator], [items[i] for i in ids], tuple(g["seeds"]), g["per_seed"],
-                       g["temperature"], g["top_p"], g["max_tokens"])
-    store.write("raw_candidates", name, df, meta={"generator": args.generator, "split": args.split, **g})
+    generate_pool(GENERATORS[args.generator], [items[i] for i in ids], store, name, tuple(g["seeds"]),
+                  g["per_seed"], g["temperature"], g["top_p"], g["max_tokens"],
+                  meta={"generator": args.generator, "split": args.split, **g})
 
 
 def cmd_annotate(args) -> None:

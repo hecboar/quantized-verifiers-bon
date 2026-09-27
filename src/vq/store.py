@@ -57,6 +57,9 @@ class CampaignStore:
         d = self._shard_dir(kind, name)
         return sorted(int(p.stem) for p in d.glob("*.parquet")) if d.exists() else []
 
+    def read_shard(self, kind: str, name: str, shard: int) -> pd.DataFrame:
+        return pd.read_parquet(self._shard_dir(kind, name) / f"{shard:05d}.parquet")
+
     def check_shard_fingerprint(self, kind: str, name: str, fingerprint: str) -> None:
         """Pin a campaign's shards to one run fingerprint (first writer wins)."""
         d = self._shard_dir(kind, name)

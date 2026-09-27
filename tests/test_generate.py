@@ -41,3 +41,42 @@ def test_annotate_adds_correctness_and_keys():
     assert out["parsed"].tolist() == [True, True, False]
     assert out["truncated"].tolist() == [False, False, True]
     assert out.loc[2, "answer_key"] == -1
+
+
+def test_generation_resumes_per_seed_after_a_crash(tmp_path):
+    import pytest
+
+    from vq.generate import generate_seeds
+    from vq.store import CampaignStore
+
+    store = CampaignStore(tmp_path)
+    items = [Item(f"q{i}", "?", "1", "numeric", "gsm8k-test") for i in range(3)]
+    calls = []
+
+    def one_seed(seed, fail_on=None):
+        calls.append(seed)
+        if seed == fail_on:
+            raise RuntimeError("pod timeout")
+        return pd.DataFrame([{"question_id": it.id, "k": k, "text": f"s{seed}", "n_tokens": 5, "finish_reason": "stop"}
+                             for it in items for k in range(2)])
+
+    with pytest.raises(RuntimeError):
+        generate_seeds(items, (0, 1, 2), 2, lambda s: one_seed(s, fail_on=2), store, "G__eval")
+    assert store.shard_ids("raw_candidates", "G__eval") == [0, 1]
+    calls.clear()
+    df = generate_seeds(items, (0, 1, 2), 2, one_seed, store, "G__eval")
+    assert calls == [2]  # only the missing seed is regenerated
+    assert len(df) == 3 * 6 and sorted(df["cand"].unique()) == list(range(6))
+    assert store.done("raw_candidates", "G__eval")
+
+
+def test_generation_coverage_is_validated(tmp_path):
+    import pytest
+
+    from vq.generate import generate_seeds
+    from vq.store import CampaignStore
+
+    items = [Item(f"q{i}", "?", "1", "numeric", "gsm8k-test") for i in range(2)]
+    short = lambda s: pd.DataFrame([{"question_id": "q0", "k": 0, "text": "x", "n_tokens": 1, "finish_reason": "stop"}])
+    with pytest.raises(ValueError, match="coverage"):
+        generate_seeds(items, (0,), 1, short, CampaignStore(tmp_path), "G__eval")

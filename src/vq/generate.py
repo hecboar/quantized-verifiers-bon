@@ -67,34 +67,56 @@ def annotate(df: pd.DataFrame, items: dict[str, Item]) -> pd.DataFrame:
     return out
 
 
+def generate_seeds(items: list[Item], seeds: tuple[int, ...], per_seed: int, one_seed, store, name: str,
+                   meta: dict | None = None) -> pd.DataFrame:
+    """Resumable generation: one shard per seed (a pod timeout loses at most
+    one seed). `one_seed(seed)` returns rows with question_id, k (0..per_seed-1),
+    text, n_tokens, finish_reason. The merged pool is validated for coverage."""
+    done = set(store.shard_ids("raw_candidates", name))
+    for si, seed in enumerate(seeds):
+        if si in done:
+            continue
+        df = one_seed(seed).copy()
+        df["seed"] = seed
+        df["cand"] = si * per_seed + df["k"]
+        store.write_shard("raw_candidates", name, si, df.drop(columns="k"))
+    merged = pd.concat([store.read_shard("raw_candidates", name, si) for si in range(len(seeds))], ignore_index=True)
+    expected = {(it.id, c) for it in items for c in range(len(seeds) * per_seed)}
+    got = set(zip(merged["question_id"], merged["cand"]))
+    if got != expected or len(merged) != len(expected):
+        raise ValueError(f"{name}: candidate coverage mismatch ({len(expected - got)} missing, {len(got - expected)} extra)")
+    store.write("raw_candidates", name, merged, meta=meta, overwrite=True)
+    return merged
+
+
 def generate_pool(
     model_id: str,
     items: list[Item],
+    store,
+    name: str,
     seeds: tuple[int, ...] = (0, 1, 2, 3),
     per_seed: int = 8,
     temperature: float = 0.8,
     top_p: float = 1.0,
     max_tokens: int = 1024,
     gpu_memory_utilization: float = 0.9,
+    meta: dict | None = None,
 ) -> pd.DataFrame:
-    """GPU only. Returns one row per candidate: question_id, cand, seed, text,
-    n_tokens, finish_reason."""
-    import os
-
+    """GPU only (vLLM). Resumable per seed via generate_seeds."""
     from vllm import LLM, SamplingParams
 
-    llm = LLM(model=model_id, dtype="bfloat16", seed=0, gpu_memory_utilization=gpu_memory_utilization,
-              hf_token=os.environ.get("HF_TOKEN"))
+    # gated models authenticate through the HF_TOKEN env var (read by huggingface_hub)
+    llm = LLM(model=model_id, dtype="bfloat16", seed=0, gpu_memory_utilization=gpu_memory_utilization)
     tok = llm.get_tokenizer()
     prompts = [build_prompt(tok, it.question) for it in items]
-    rows = []
-    for si, seed in enumerate(seeds):
+
+    def one_seed(seed: int) -> pd.DataFrame:
         sp = SamplingParams(n=per_seed, temperature=temperature, top_p=top_p, max_tokens=max_tokens, seed=seed)
-        outs = llm.generate(prompts, sp)
-        for it, o in zip(items, outs):
+        rows = []
+        for it, o in zip(items, llm.generate(prompts, sp)):
             for k, c in enumerate(o.outputs):
-                rows.append({
-                    "question_id": it.id, "cand": si * per_seed + k, "seed": seed, "text": c.text,
-                    "n_tokens": len(c.token_ids), "finish_reason": c.finish_reason,
-                })
-    return pd.DataFrame(rows)
+                rows.append({"question_id": it.id, "k": k, "text": c.text, "n_tokens": len(c.token_ids),
+                             "finish_reason": c.finish_reason})
+        return pd.DataFrame(rows)
+
+    return generate_seeds(items, seeds, per_seed, one_seed, store, name, meta=meta)
