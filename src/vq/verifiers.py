@@ -115,6 +115,14 @@ def prm_score_ids(model, seqs: list[list[int]], sep_id: int, pad_id: int, max_to
 
 
 # ------------------------------------------------------------------ loading
+def patch_prm_config(cfg, tokenizer):
+    """The PRM's remote code predates transformers 5 and reads
+    `config.pad_token_id`, which newer configs no longer define by default."""
+    if getattr(cfg, "pad_token_id", None) is None:
+        cfg.pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    return cfg
+
+
 def from_pretrained_compat(cls, name, dtype=None, **kw):
     """transformers >= 4.56 takes `dtype`; older versions (possibly pinned by
     vLLM on the pod) take `torch_dtype`."""
@@ -159,7 +167,10 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
     if spec.kind == "orm":
         model = from_pretrained_compat(AutoModelForSequenceClassification, spec.hf_id, dtype=dtype, num_labels=1, **kwargs)
     else:
-        model = from_pretrained_compat(AutoModel, spec.hf_id, dtype=dtype, trust_remote_code=True, **kwargs)
+        from transformers import AutoConfig
+
+        cfg = patch_prm_config(AutoConfig.from_pretrained(spec.hf_id, trust_remote_code=True, token=token), tok)
+        model = from_pretrained_compat(AutoModel, spec.hf_id, dtype=dtype, config=cfg, trust_remote_code=True, **kwargs)
     return tok, model.to(device).eval()
 
 
