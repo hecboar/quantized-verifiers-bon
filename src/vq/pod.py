@@ -44,6 +44,12 @@ class PodSpec:
             "volumeInGb": self.volume_gb,
             "volumeMountPath": "/workspace",
             "ports": ["22/tcp"],
+            # host requirements (first real launches: a COMMUNITY host without a
+            # public IP never exposed SSH; defaults would give 8 GB RAM per GPU)
+            "supportPublicIp": True,
+            "minRAMPerGPU": 32,
+            "minVCPUPerGPU": 4,
+            "minDownloadMbps": 500,
             "env": {**self.CACHE_ENV, **self.env},
         }
 

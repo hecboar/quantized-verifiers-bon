@@ -264,3 +264,11 @@ def test_remote_archive_command_tolerates_missing_outputs():
 
     cmd = remote_archive_command("/workspace/vq")
     assert "mkdir -p outputs" in cmd and cmd.index("mkdir -p outputs") < cmd.index("tar czf")
+
+
+def test_host_requirements_for_this_study():
+    body = PodSpec(name="x").body()
+    assert body["supportPublicIp"] is True  # COMMUNITY hosts may have no public IP -> no SSH
+    assert body["minRAMPerGPU"] >= 32        # 8B / PRM-7B pass through CPU RAM while loading (~16 GB BF16)
+    assert body["minDownloadMbps"] >= 500    # ~42 GB of verifiers per phase must not take an hour
+    assert body["minVCPUPerGPU"] >= 4

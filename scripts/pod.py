@@ -107,7 +107,8 @@ def cmd_launch(a):
         _run(ssh_argv(ep, f"cd {REMOTE} && tar xzf bundle.tar.gz && rm bundle.tar.gz", str(KEY)))
         _run(ssh_argv(ep, remote_detached(cmd), str(KEY)))
 
-    pid = launch_pod(client, spec, setup)  # deletes the pod if anything in setup fails
+    # up to 25 min for SSH: a fresh host may need to pull the ~10 GB image first
+    pid = launch_pod(client, spec, setup, wait_s=1500)  # deletes the pod if anything in setup fails
     price = client.get_pod(pid).get("costPerHr")
     print(f"running pod {pid} at {price} USD/h. Next: python scripts/pod.py watch --pod {pid}")
 
