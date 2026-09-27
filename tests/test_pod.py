@@ -272,3 +272,75 @@ def test_host_requirements_for_this_study():
     assert body["minRAMPerGPU"] >= 32        # 8B / PRM-7B pass through CPU RAM while loading (~16 GB BF16)
     assert body["minDownloadMbps"] >= 500    # ~42 GB of verifiers per phase must not take an hour
     assert body["minVCPUPerGPU"] >= 4
+
+
+class DroppingSession(FakeSession):
+    """POST /pods: the connection drops `drops` times; `created_anyway` means the
+    server did create the pod before the connection died (ambiguous failure)."""
+
+    def __init__(self, drops, created_anyway):
+        super().__init__()
+        self.drops, self.created_anyway, self.pods = drops, created_anyway, []
+
+    def request(self, method, url, headers=None, json=None, timeout=None):
+        import requests
+
+        self.calls.append((method, url, headers, json))
+        if method == "POST" and url.endswith("/pods"):
+            if self.drops > 0:
+                self.drops -= 1
+                if self.created_anyway:
+                    self.pods.append({"id": "ghost1", "name": json["name"], "desiredStatus": "RUNNING"})
+                raise requests.exceptions.ConnectionError("Remote end closed connection without response")
+            self.pods.append({"id": "pod123", "name": json["name"], "desiredStatus": "RUNNING"})
+            return FakeResp(201, {"id": "pod123"})
+        if method == "GET" and url.endswith("/pods"):
+            return FakeResp(200, list(self.pods))
+        return super().request(method, url, headers, json, timeout)
+
+
+def test_dropped_connection_adopts_pod_created_anyway():
+    from vq.pod import create_pod_when_available
+
+    s = DroppingSession(drops=1, created_anyway=True)
+    pod = create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="vq-pilot-ab12"), retry_s=0,
+                                    max_wait_s=60, sleep=lambda t: None)
+    assert pod["id"] == "ghost1"  # no second pod created, no orphan
+    assert sum(1 for m, u, *_ in s.calls if m == "POST" and u.endswith("/pods")) == 1
+
+
+def test_dropped_connection_without_pod_retries_creation():
+    from vq.pod import create_pod_when_available
+
+    s = DroppingSession(drops=2, created_anyway=False)
+    pod = create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="vq-pilot-cd34"), retry_s=0,
+                                    max_wait_s=60, sleep=lambda t: None)
+    assert pod["id"] == "pod123"
+
+
+def test_unique_pod_names():
+    from vq.pod import unique_pod_name
+
+    a, b = unique_pod_name("pilot --generator G"), unique_pod_name("pilot --generator G")
+    assert a != b and a.startswith("vq-pilot-")
+
+
+def test_idempotent_calls_retry_transient_network_errors(monkeypatch):
+    import time
+
+    import requests
+
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    class OnceDropping(FakeSession):
+        dropped = False
+
+        def request(self, method, url, headers=None, json=None, timeout=None):
+            if method == "DELETE" and not self.dropped:
+                self.dropped = True
+                raise requests.exceptions.ConnectionError("reset")
+            return super().request(method, url, headers, json, timeout)
+
+    s = OnceDropping()
+    RunPodClient("K", session=s).delete_pod("p1")  # must not raise: deleting a pod is too important to skip
+    assert [m for m, *_ in s.calls] == ["DELETE"]

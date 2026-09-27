@@ -66,8 +66,22 @@ class RunPodClient:
         return "RunPodClient(<key hidden>)"
 
     def _req(self, method: str, path: str, body: dict | None = None) -> dict:
-        r = self.s.request(method, BASE + path, headers={"Authorization": f"Bearer {self._key}"},
-                           json=body, timeout=self.timeout)
+        import time
+
+        import requests
+
+        # idempotent calls (GET / DELETE / stop) retry on transient network errors;
+        # POST /pods is handled by create_pod_when_available (ambiguous outcome)
+        attempts = 1 if (method == "POST" and path == "/pods") else 4
+        for i in range(attempts):
+            try:
+                r = self.s.request(method, BASE + path, headers={"Authorization": f"Bearer {self._key}"},
+                                   json=body, timeout=self.timeout)
+                break
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                if i == attempts - 1:
+                    raise
+                time.sleep(5 * (i + 1))
         if r.status_code >= 400:
             body = getattr(r, "text", "")[:500]
             raise RuntimeError(f"RunPod API {method} {path} -> HTTP {r.status_code}: {body}")
@@ -144,17 +158,46 @@ def billed_hours_cap(max_hours: float, grace_minutes: int = 60) -> float:
 NO_STOCK = "no instances currently available"
 
 
+def unique_pod_name(step: str) -> str:
+    """Pod names identify a launch, so a pod created behind a dropped
+    connection can be found (and adopted) instead of orphaned."""
+    import uuid
+
+    return f"vq-{step.split()[0]}-{uuid.uuid4().hex[:6]}"
+
+
+def _find_pod_by_name(client: RunPodClient, name: str):
+    try:
+        pods = client.list_pods()
+    except Exception:
+        return None
+    return next((p for p in pods or [] if p.get("name") == name), None)
+
+
 def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int = 600, max_wait_s: int = 6 * 3600,
                               sleep=None) -> dict:
     """Retry creation only while RunPod reports no free instance of this GPU
     (costs nothing while waiting); any other API error is raised at once."""
     import time
 
+    import requests
+
     sleep = sleep or time.sleep
     waited = 0
     while True:
         try:
             return client.create_pod(spec)
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            # ambiguous: the server may have created the pod before the connection died
+            existing = _find_pod_by_name(client, spec.name)
+            if existing is not None:
+                print(f"connection dropped but pod {existing['id']} exists: adopting it", flush=True)
+                return existing
+            if waited >= max_wait_s:
+                raise
+            print(f"network error creating the pod ({type(e).__name__}); retrying in 30s", flush=True)
+            sleep(30)
+            waited += 30
         except RuntimeError as e:
             if NO_STOCK not in str(e) or waited >= max_wait_s:
                 raise

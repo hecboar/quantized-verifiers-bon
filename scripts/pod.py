@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
                     finish_pod, launch_pod, merge_outputs, remote_archive_command, remote_detached, requires_gate,
-                    scp_argv, ssh_argv, ssh_endpoint)
+                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
@@ -81,7 +81,7 @@ def cmd_launch(a):
     if requires_gate(a.step) and not gate_allows(ROOT / "outputs" / "gate.json") and not a.force:
         sys.exit("refusing: this step spends grid budget and outputs/gate.json does not say go "
                  "(run the phase-1 gate first, or pass --force deliberately)")
-    spec = PodSpec(name=f"vq-{a.step.split()[0]}", cloud_type=a.cloud,
+    spec = PodSpec(name=unique_pod_name(a.step), cloud_type=a.cloud,
                    env={"HF_TOKEN": env["HF_TOKEN"], "PUBLIC_KEY": pub.read_text().strip()})
     cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras, grace_minutes=a.grace)
     cap = billed_hours_cap(a.hours, a.grace)
