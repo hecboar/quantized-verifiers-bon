@@ -99,3 +99,18 @@ def test_score_matrix_rejects_nonfinite(tmp_path):
     store.write("scores", "G__v__q", s, overwrite=True)
     with pytest.raises(ValueError, match="finite"):
         score_matrix(store, "G", "v", "q", "eval")
+
+
+def test_early_signal_compares_each_condition_to_bf16_and_to_the_null_floor(tmp_path):
+    from vq.analysis import early_signal
+
+    store = _setup(tmp_path)  # G__v__bf16 and G__v__q (noisy) on eval
+    s = store.read("scores", "G__v__bf16")
+    store.write("scores", "G__v__bf16-null", s.assign(score=s["score"] + 1e-3 * np.sin(np.arange(len(s)))))
+    rep = early_signal(store, "G", ["v"], ["bf16-null", "q"], split="eval", reference="bf16", n_boot=300)
+    r = rep["v"]
+    assert r["bf16-null"]["winner_change"] < r["q"]["winner_change"]
+    for c in ("bf16-null", "q"):
+        assert {"delta_acc", "delta_lo", "delta_hi", "H", "B", "winner_change"} <= set(r[c])
+    assert r["noise_floor_winner_change"] == r["bf16-null"]["winner_change"]
+    assert r["q"]["above_noise_floor"] is True

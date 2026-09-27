@@ -54,3 +54,10 @@ def test_run_names_are_filesystem_safe_and_unique_across_phases(cfg):
 def test_bf16_run_has_no_quantization(cfg):
     r = [x for x in phase_runs(cfg, "phase3_main", "G") if x.condition == "bf16"][0]
     assert r.method == "none" and r.recipe is None
+
+
+def test_phase1_signal_runs(cfg):
+    runs = phase_runs(cfg, "phase1_signal", generator="G")
+    assert {(r.verifier, r.condition) for r in runs} == {
+        (v, c) for v in ("sky-4b", "sky-8b") for c in ("bf16", "bf16-null", "nf4", "gptq-w4", "gptq-w3")}
+    assert all(r.recipe in (None, "generic") for r in runs)  # no dev-calibrated method in the early signal

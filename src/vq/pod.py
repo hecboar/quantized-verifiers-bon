@@ -297,7 +297,8 @@ def remote_archive_command(workdir: str) -> str:
 
 
 # steps allowed before the phase-1 gate has passed (cheap / validation only)
-_PRE_GATE = ("pilot", "gate", "annotate", "select-lambda", "export-packed", "parity", "plan", "prepare-data")
+_PRE_GATE = ("pilot", "phase1", "gate", "annotate", "select-lambda", "export-packed", "parity", "plan",
+             "prepare-data")
 
 
 def requires_gate(step: str) -> bool:

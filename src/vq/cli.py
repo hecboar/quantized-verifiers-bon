@@ -248,6 +248,46 @@ def cmd_score(args) -> None:
         print(f"[{args.phase}{' dev-only' if args.dev_only else ''}] {r.name}: {status}", flush=True)
 
 
+def cmd_phase1(args) -> None:
+    """Phase 1 in one pod step: generate the dev pools (child process: vLLM frees
+    its VRAM on exit), annotate, score the phase1_signal grid on dev, and write
+    the early signal (quantization vs BF16 next to the BF16 null floor)."""
+    import subprocess
+
+    from .analysis import early_signal
+    from .experiment import ScoreRun, load_config, phase_runs
+    from .runner import execute_run
+
+    cfg = load_config(args.config)
+    name = f"{args.generator}__dev"
+    gen = [sys.executable, "-m", "vq.cli", "generate", "--generator", args.generator, "--split", "dev",
+           "--name", name]
+    if args.limit:
+        gen += ["--limit", str(args.limit)]
+    subprocess.run(gen, check=True)
+    cmd_annotate(argparse.Namespace(generator=args.generator, config=args.config))
+    ctx = _context(args)
+    runs = phase_runs(cfg, "phase1_signal", args.generator)
+    for v in sorted({r.verifier for r in runs}):
+        execute_run(ScoreRun(args.generator, v, "bf16", "none"), ctx, dev_full=True)
+    for r in runs:
+        print(f"[phase1 dev] {r.verifier} {r.condition}: {execute_run(r, ctx, dev_full=True)}", flush=True)
+    verifiers = sorted({r.verifier for r in runs})
+    conds = [f"dev-full-{c}" for c in cfg["phases"]["phase1_signal"]["grid"]["conditions"] if c != "bf16"]
+    sig = early_signal(ctx.store, args.generator, verifiers, conds, split="dev", reference="dev-full-bf16")
+    sig["_generation"] = ctx.store.meta("raw_candidates", name).get("throughput")
+    OUT.mkdir(exist_ok=True)
+    (OUT / "signal.json").write_text(json.dumps(sig, indent=1))
+    print("EARLY SIGNAL (dev, N = full pool): delta accuracy [95% CI], winner change, noise floor")
+    for v in verifiers:
+        floor = sig[v]["noise_floor_winner_change"]
+        for c in conds:
+            r = sig[v][c]
+            print(f"  {v:<8} {c.replace('dev-full-', ''):<10} dA={r['delta_acc']:+.3f} "
+                  f"[{r['delta_lo']:+.3f}, {r['delta_hi']:+.3f}]  winner change={r['winner_change']:.3f}  "
+                  f"(floor {floor:.3f})")
+
+
 def cmd_select_lambda(args) -> None:
     """CH lambda chosen on the frozen dev-scored subset only (no eval scoring),
     then frozen for every CH run (plan §5)."""
@@ -442,6 +482,9 @@ def main(argv=None) -> None:
     sp.add_argument("--only", default=None, help="comma-separated verifier keys")
     sp.add_argument("--conditions", default=None, help="comma-separated condition names")
     sp.add_argument("--dev-only", action="store_true", help="score development pools only (phase-1 gate)")
+    sp = add("phase1", cmd_phase1)
+    sp.add_argument("--generator", required=True)
+    sp.add_argument("--limit", type=int, default=None, help="dev questions (tests only; default all 400)")
     sp = add("select-lambda", cmd_select_lambda)
     sp.add_argument("--generator", required=True)
     sp.add_argument("--verifier", default="sky-4b")

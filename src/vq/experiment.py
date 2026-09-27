@@ -48,6 +48,8 @@ def _from_condition(cfg, generator, verifier, condition) -> ScoreRun:
 
 def phase_runs(cfg: dict, phase: str, generator: str | None) -> list[ScoreRun]:
     p = cfg["phases"][phase]
+    if phase == "phase1_signal":
+        return [_from_condition(cfg, generator, v, c) for v in p["grid"]["verifiers"] for c in p["grid"]["conditions"]]
     if phase == "phase3_main":
         runs = [_from_condition(cfg, generator, v, c) for v in p["grid"]["verifiers"] for c in p["grid"]["conditions"]]
         runs += [_from_condition(cfg, generator, e["verifier"], e["condition"]) for e in p["extra"]]

@@ -134,3 +134,31 @@ def compare_conditions(store: CampaignStore, generator: str, verifier: str, a: s
     d = np.abs(sa - sb)
     return {"n_questions": Q, "max_abs_diff": float(d.max()), "mean_abs_diff": float(d.mean()),
             "winner_agreement_full_pool": float((select_bon(sa, subsets, prio) == select_bon(sb, subsets, prio)).mean())}
+
+
+def early_signal(store: CampaignStore, generator: str, verifiers: list[str], conditions: list[str],
+                 split: str = "dev", reference: str = "bf16", n_boot: int = 10_000, seed: int = 7,
+                 null: str = "bf16-null") -> dict:
+    """Phase-1 early signal (development data only): for each quantized
+    condition, the change in Best-of-N accuracy at the full pool, harm/benefit,
+    and the winner-change rate next to the BF16 null-control noise floor."""
+    out = {}
+    for v in verifiers:
+        res = {}
+        for c in conditions:
+            _, corr, _, _ = score_matrix(store, generator, v, reference, split)
+            n = corr.shape[1]
+            m = condition_metrics(store, generator, v, c, budgets=[n], split=split, reference=reference,
+                                  vote_temperature=None, seed=seed)[n]
+            bs = paired_bootstrap({"a": m["acc_q"], "b": m["acc_ref"]}, lambda d: d["a"] - d["b"], n_boot, seed)
+            res[c] = {"delta_acc": bs["estimate"], "delta_lo": bs["ci_low"], "delta_hi": bs["ci_high"],
+                      "H": float(m["H"].mean()), "B": float(m["B"].mean()),
+                      "winner_change": float(m["winner_change"].mean()), "acc_ref": float(m["acc_ref"].mean()),
+                      "n_questions": int(len(m["acc_q"]))}
+        floor = next((res[c]["winner_change"] for c in res if c.endswith(null)), None)
+        res["noise_floor_winner_change"] = floor
+        for c, r in list(res.items()):
+            if isinstance(r, dict) and floor is not None:
+                r["above_noise_floor"] = bool(r["winner_change"] > 2 * floor + 0.01) and not c.endswith(null)
+        out[v] = res
+    return out

@@ -51,6 +51,10 @@ calibration:
   lambda_grid: [0.5, 2.0, 8.0]    # CH-GPTQ lambda chosen on dev, then frozen
 
 phases:
+  phase1_signal:                   # early signal on the 400 dev questions (decides go / refocus)
+    grid:
+      verifiers: [sky-4b, sky-8b]
+      conditions: [bf16, bf16-null, nf4, gptq-w4, gptq-w3]
   phase3_main:
     grid:
       verifiers: [sky-1.7b, sky-4b, sky-8b, prm-7b]
