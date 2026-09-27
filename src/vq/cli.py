@@ -250,41 +250,30 @@ def cmd_select_lambda(args) -> None:
 # ------------------------------------------------------------------ pilot
 def cmd_pilot(args) -> None:
     """Phase 0: throughput + integrity checks on a handful of dev questions."""
-    import time
-
-    import torch
-
-    from .generate import GENERATORS, annotate, generate_pool
-    from .verifiers import VERIFIERS, Scorer, load_verifier
+    from .generate import GENERATORS, generate_pool
+    from .pilot import run_pilot
+    from .runner import generic_chunks
+    from .verifiers import VERIFIERS, load_verifier
 
     items = _items()
     ids = _manifest("gate")[: args.questions]
-    report = {"score": {}, "parity": {}}
-    t0 = time.perf_counter()
-    df = generate_pool(GENERATORS[args.generator], [items[i] for i in ids])
-    report["generate"] = int(df["n_tokens"].sum() / (time.perf_counter() - t0))
-    df = annotate(df, items)
-    report["avg_gen_tokens"] = float(df["n_tokens"].mean())
-    report["truncated_frac"] = float(df["truncated"].mean())
-    report["parsed_frac"] = float(df["parsed"].mean())
-    qs = [items[q].question for q in df["question_id"]]
-    for v in ("sky-1.7b", "sky-4b", "sky-8b", "prm-7b"):
-        tok, model = load_verifier(VERIFIERS[v])
-        sc = Scorer(VERIFIERS[v], tok, model)
-        torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        res = sc.score(qs, df["text"].tolist())
-        torch.cuda.synchronize()
-        report["score"][v] = int(sum(res["n_tokens"]) / (time.perf_counter() - t0))
-        report["avg_score_tokens"] = float(sum(res["n_tokens"]) / len(res["n_tokens"]))
-        sc.max_tokens = 1
-        single = sc.score(qs[:16], df["text"].tolist()[:16])["score"]
-        report["parity"][v] = float(max(abs(a - b) for a, b in zip(res["score"][:16], single)))
-        del model
-        torch.cuda.empty_cache()
+    texts = _generic_texts()
+    specs = {k: VERIFIERS[k] for k in ("sky-1.7b", "sky-4b", "sky-8b", "prm-7b")}
+    rep = run_pilot(
+        items, ids, lambda its: generate_pool(GENERATORS[args.generator], its), load_verifier, specs,
+        quant_verifier="sky-1.7b", n_calib=16, device="cuda",
+        generic_chunk=lambda tok, n: generic_chunks(tok, texts, 512, n),
+    )
+    # GPTQ time for the grid: 128 calibration sequences, scaled from 1.7B to ~8B parameters
+    per_seq = rep["quant_check"]["sky-1.7b"]["per_calib_seq_seconds"]
+    rep["quant_hours"] = {"gptq": per_seq * 128 * 4.7 / 3600, "awq": per_seq * 128 * 3 / 3600,
+                          "nf4": 0.02, "rtn": 0.02, "none": 0.0}
+    rep["generator"] = args.generator
     OUT.mkdir(exist_ok=True)
-    (OUT / "throughput.json").write_text(json.dumps(report, indent=1))
-    print(json.dumps(report, indent=1))
+    (OUT / f"pilot_{args.generator}.json").write_text(json.dumps(rep, indent=1))
+    (OUT / "throughput.json").write_text(json.dumps(rep, indent=1))
+    print(json.dumps(rep, indent=1))
+    print("PILOT OK" if rep["ok"] else "PILOT FAILED: do not launch further phases")
 
 
 # --------------------------------------------------------- memory (C2)
