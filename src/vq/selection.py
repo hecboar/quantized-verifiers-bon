@@ -72,7 +72,7 @@ def select_vote(
         onehot = k[..., None] == np.arange(K)  # [q, R, N, K]
         tot = (w[..., None] * onehot).sum(axis=2)  # [q, R, K]
         present = onehot.any(axis=2)
-        top = present & np.isclose(tot, tot.max(axis=-1, keepdims=True))
+        top = present & (tot == tot.max(axis=-1, keepdims=True))  # exact ties only (pre-registered rule)
         eligible = valid & np.take_along_axis(top, np.where(valid, k, 0), axis=-1)
         s_el = np.where(eligible, s, -np.inf)
         best = s_el.max(axis=-1, keepdims=True)
@@ -81,3 +81,15 @@ def select_vote(
         any_valid = valid.any(axis=-1)
         out[q0:q1] = np.where(any_valid, win, out[q0:q1])
     return out
+
+
+def fit_vote_temperature(scores: np.ndarray, correct: np.ndarray, keys: np.ndarray,
+                         grid=(0.1, 0.3, 1.0, 3.0, 10.0), seed: int = 11):
+    """Softmax temperature for the weighted vote, fitted on *development*
+    BF16 scores at the full pool size and then frozen (plan: fit_on_dev)."""
+    Q, C = scores.shape
+    subsets = draw_subsets(Q, C, C, 1, seed)
+    prio = tiebreak_priority(Q, C, seed)
+    q_idx = np.arange(Q)[:, None]
+    table = {float(T): float(correct[q_idx, select_vote(scores, keys, subsets, prio, T)].mean()) for T in grid}
+    return max(table, key=table.get), table

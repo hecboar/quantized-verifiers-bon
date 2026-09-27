@@ -50,7 +50,7 @@ def test_report_writes_tables(tmp_path):
     assert (main.loc[main.N == 1, "winner_change"] == 0).all()
     conf = json.loads((out / "confirmatory.json").read_text())
     assert "c1_delta_8b_gptq_w4" in conf and "c3_ch_vs_dpq" in conf
-    assert conf["c2_memory_frontier"]["status"] == "skipped: outputs/memory.json not found"
+    assert conf["c2_memory_frontier"]["status"].startswith("missing")
     controls = pd.read_csv(out / "controls.csv")
     assert {"real", "perm_free", "perm_strat", "gaussian", "frac_moved_strat"} <= set(controls.columns)
     c3 = pd.read_csv(out / "c3.csv")
@@ -59,6 +59,8 @@ def test_report_writes_tables(tmp_path):
 
 def test_memory_frontier_selects_on_dev_and_evaluates_on_eval(tmp_path):
     st = _mk(tmp_path)
+    for v in ("sky-4b", "sky-8b"):  # deployment (packed) scores
+        st.write("scores", f"G__{v}__gptq-w4-packed", st.read("scores", f"G__{v}__gptq-w4"))
     mem = {
         "sky-4b__bf16": {"peak_gb": 9.0}, "sky-4b__gptq-w4": {"peak_gb": 3.5},
         "sky-8b__bf16": {"peak_gb": 17.0}, "sky-8b__gptq-w4": {"peak_gb": 5.5},
@@ -71,11 +73,10 @@ def test_memory_frontier_selects_on_dev_and_evaluates_on_eval(tmp_path):
     fr = pd.read_csv(out / "frontier.csv")
     row6 = fr[fr.ceiling_gb == 6].iloc[0]
     assert row6["best_bf16"] == "none"  # no BF16 model fits in 6 GB
-    assert row6["best_any"] in ("sky-4b__gptq-w4", "sky-8b__gptq-w4")
+    assert row6["best_any"] in ("sky-4b__gptq-w4-packed", "sky-8b__gptq-w4-packed")
     assert row6["selected_on"] == "dev"
     conf = json.loads((out / "confirmatory.json").read_text())
-    assert "c2_frontier_10gb" in conf  # 10 GB: best-any vs best-BF16 (sky-4b bf16 fits)
-    assert "c2_frontier_20gb" not in conf  # only the pre-registered ceiling is confirmatory
+    assert conf["c2_memory_frontier"]["status"].startswith("ok (primary ceiling 10 GB")  # sky-4b bf16 fits
     assert {"delta_eval", "delta_lo", "delta_hi"} <= set(fr.columns)
 
 
@@ -85,3 +86,32 @@ def test_ch_advantage_detected_in_synthetic_data(tmp_path):
     write_report(st, "G", out, budgets=[8], repeats=20, n_boot=500)
     conf = json.loads((out / "confirmatory.json").read_text())
     assert conf["c3_ch_vs_dpq"]["estimate"] > 0
+
+
+def test_confirmatory_family_is_fixed_even_when_runs_missing(tmp_path):
+    st = _mk(tmp_path)
+    # remove the 4B CH seed 1 -> CH/DPQ seed sets no longer match for 4B
+    import os
+    os.remove(st._path("scores", "G__sky-4b__gptq-w4-ch-s1"))
+    out = tmp_path / "tables"
+    write_report(st, "G", out, budgets=[8], repeats=10, n_boot=200)
+    conf = json.loads((out / "confirmatory.json").read_text())
+    assert set(conf) >= {"c1_delta_8b_gptq_w4", "c2_memory_frontier", "c3_ch_vs_dpq"}
+    assert conf["c3_ch_vs_dpq"]["status"].startswith("missing")
+    assert conf["c3_ch_vs_dpq"]["p_holm"] == 1.0
+    assert conf["c2_memory_frontier"]["p_holm"] == 1.0  # no memory.json -> conservative
+
+
+def test_frontier_uses_deployment_scores_and_skips_failed_measurements(tmp_path):
+    st = _mk(tmp_path)
+    # deployment (packed) scores exist for the 8B only
+    st.write("scores", "G__sky-8b__gptq-w4-packed", st.read("scores", "G__sky-8b__gptq-w4"))
+    mem = {"sky-4b__bf16": {"peak_gb": 9.0}, "sky-8b__bf16": {"peak_gb": 17.0},
+           "sky-8b__gptq-w4": {"peak_gb": 5.5}, "sky-4b__gptq-w4": {"status": "missing packed checkpoint"}}
+    mp = tmp_path / "memory.json"
+    mp.write_text(json.dumps(mem))
+    out = tmp_path / "tables"
+    write_report(st, "G", out, budgets=[8], repeats=10, n_boot=200, memory_path=mp, ceilings_gb=(6, 10))
+    fr = pd.read_csv(out / "frontier.csv")
+    assert fr.loc[fr.ceiling_gb == 6, "best_any"].item() == "sky-8b__gptq-w4-packed"
+    assert "sky-4b__gptq-w4" not in set(fr["best_any"])

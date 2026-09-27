@@ -151,3 +151,28 @@ def test_vectorised_vote_matches_reference_implementation():
     for T in (None, 1.0, 0.3):
         np.testing.assert_array_equal(select_vote(scores, keys, subsets, prio, T),
                                       select_vote_reference(scores, keys, subsets, prio, T))
+
+
+def test_weighted_vote_unequal_totals_are_not_ties():
+    #cluster B (0.5 + 0.500001) must beat cluster A (1.0)
+    from vote_reference import select_vote_reference
+
+    T = 1.0
+    s = np.array([[0.0, np.log(0.5), np.log(0.500001)]]) * T
+    keys = np.array([[0, 1, 1]])
+    subsets = np.array([[[0, 1, 2]]])
+    prio = np.array([[0.9, 0.1, 0.2]])
+    for f in (select_vote, select_vote_reference):
+        assert keys[0, f(s, keys, subsets, prio, T)[0, 0]] == 1
+
+
+def test_fit_vote_temperature_picks_best_dev_accuracy():
+    from vq.selection import fit_vote_temperature
+
+    rng = np.random.default_rng(0)
+    Q, C = 80, 16
+    correct = rng.random((Q, C)) < 0.4
+    keys = np.where(correct, 0, rng.integers(1, 6, (Q, C)))
+    scores = 3.0 * correct + rng.normal(size=(Q, C))  # informative verifier
+    T, table = fit_vote_temperature(scores, correct, keys, grid=(0.1, 1.0, 100.0), seed=0)
+    assert T in (0.1, 1.0, 100.0) and T == max(table, key=table.get)

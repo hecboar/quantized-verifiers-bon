@@ -64,13 +64,14 @@ def condition_metrics(
     store: CampaignStore, generator: str, verifier: str, condition: str,
     budgets=(1, 2, 4, 8, 16, 32), repeats: int = 200, seed: int = 7, split: str = "eval",
     vote_temperature: float | None = 1.0, reference: str = "bf16", questions: list[str] | None = None,
+    tiebreak_seed: int = 11,
 ) -> dict:
     ref, correct, keys, qids_ref = score_matrix(store, generator, verifier, reference, split, questions=questions)
     q, _, _, qids_q = score_matrix(store, generator, verifier, condition, split, questions=questions)
     if qids_ref != qids_q:
         raise ValueError(f"{condition} and {reference} cover different questions; refusing to pair")
     Q, C = ref.shape
-    prio = tiebreak_priority(Q, C, seed + 1)
+    prio = tiebreak_priority(Q, C, tiebreak_seed)  # configs/experiment.yaml seeds.tiebreak
     out = {}
     for n in budgets:
         if n > C:

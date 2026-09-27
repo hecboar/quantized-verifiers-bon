@@ -38,7 +38,7 @@ def select_vote_reference(
             clusters = np.unique(k)
             totals = np.array([w[k == c].sum() for c in clusters])
             # tie between clusters: the one containing the best (score, priority) member
-            top = np.flatnonzero(np.isclose(totals, totals.max()))
+            top = np.flatnonzero(totals == totals.max())
             cand_best = []
             for t in top:
                 members = idx[k == clusters[t]]
