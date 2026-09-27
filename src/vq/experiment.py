@@ -1,7 +1,7 @@
 """Turns configs/experiment.yaml into concrete scoring runs per phase."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
@@ -20,6 +20,11 @@ class ScoreRun:
     recipe: str | None = None  # calibration recipe (None for uncalibrated)
     seed: int = 0
     lam: str | float | None = None
+    calib_generator: str | None = None  # dev pools used for calibration (default: generator)
+
+    @property
+    def calib_gen(self) -> str:
+        return self.calib_generator or self.generator
 
     @property
     def name(self) -> str:
@@ -47,8 +52,11 @@ def phase_runs(cfg: dict, phase: str, generator: str | None) -> list[ScoreRun]:
         runs += [_from_condition(cfg, generator, e["verifier"], e["condition"]) for e in p["extra"]]
         return runs
     if phase == "phase4_gen2":
+        # evaluated on the secondary generator, quantized/calibrated exactly as
+        # for the primary one (transfer test, no re-calibration)
         gen = cfg["generation"]["secondary"]
-        return [_from_condition(cfg, gen, r["verifier"], r["condition"]) for r in p["runs"]]
+        return [replace(_from_condition(cfg, gen, r["verifier"], r["condition"]), calib_generator=generator)
+                for r in p["runs"]]
     if phase == "phase5_ch":
         runs = []
         for verifier, seeds in p["seeds"].items():

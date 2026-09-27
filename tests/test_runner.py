@@ -64,7 +64,7 @@ def test_bf16_run_scores_eval_and_dev_subset(ctx):
 
 def test_quantized_run_is_audited_and_head_untouched(ctx):
     execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)
-    execute_run(ScoreRun("G", "tiny", "dev-full-bf16", "none"), ctx, dev_full=True)
+    execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx, dev_full=True)
     run = ScoreRun("G", "tiny", "gptq-w4-ch-s0", "gptq", 4, 32, "ch", 0, 1.0)
     execute_run(run, ctx)
     meta = ctx.store.meta("scores", run.name)
@@ -118,3 +118,34 @@ def test_select_lambda_minimises_dev_winner_change():
              2.0: ref + 0.05 * np.random.default_rng(2).normal(size=ref.shape),
              8.0: ref + 1.0 * np.random.default_rng(3).normal(size=ref.shape)}
     assert select_lambda(ref, cands) == 2.0
+
+
+def test_dev_full_quantized_condition_scores_only_dev(ctx):
+    # phase 1 gate: eval pools do not exist yet
+    execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx, dev_full=True)
+    run = ScoreRun("G", "tiny", "nf4", "nf4")
+    execute_run(run, ctx, dev_full=True)
+    df = ctx.store.read("scores", "G__tiny__dev-full-nf4")
+    assert set(df["split"]) == {"dev"} and len(df) == 12 * 6
+
+
+def test_calibration_from_primary_generator_evaluated_on_secondary(tmp_path):
+    store = CampaignStore(tmp_path)
+    store.write("candidates", "G__dev", _candidates(prefix="d"))
+    store.write("candidates", "H__eval", _candidates(n_q=5, prefix="h"))  # no H__dev (gen2 subset)
+    questions = {f"d{q}": f"q d{q}" for q in range(12)} | {f"h{q}": f"q h{q}" for q in range(5)}
+    c = RunContext(store=store, questions=questions, device="cpu", loader=fake_loader,
+                   verifier_specs={"tiny": VerifierSpec("tiny", "none", "orm")}, n_calib=8, dev_scored=6, shard_size=20)
+    execute_run(ScoreRun("G", "tiny", "bf16", "none"), c, dev_full=True)
+    run = ScoreRun("H", "tiny", "ch-gptq-w4", "gptq", 4, 32, "ch", 0, 1.0, calib_generator="G")
+    execute_run(run, c)
+    df = store.read("scores", run.name)
+    assert set(df["split"]) == {"eval"} and len(df) == 5 * 6
+    assert store.meta("scores", run.name)["calibration"]["calib_generator"] == "G"
+
+
+def test_missing_eval_pools_error_is_explicit(ctx):
+    ctx.store = CampaignStore(ctx.store.root / "empty")
+    ctx.store.write("candidates", "G__dev", _candidates(prefix="d"))
+    with pytest.raises(FileNotFoundError, match="G__eval"):
+        execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)

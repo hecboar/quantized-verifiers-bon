@@ -42,8 +42,8 @@ class RunContext:
     dtype: torch.dtype = torch.bfloat16
 
 
-def dev_full_name(generator: str, verifier: str) -> str:
-    return f"{generator}__{verifier}__dev-full-bf16"
+def dev_full_name(generator: str, verifier: str, condition: str = "bf16") -> str:
+    return f"{generator}__{verifier}__dev-full-{condition}"
 
 
 def generic_chunks(tokenizer, texts: list[str], chunk_tokens: int, n: int) -> list[list[int]]:
@@ -74,19 +74,25 @@ def _fingerprints(model) -> dict[str, tuple[float, float]]:
 
 
 def _work_rows(ctx: RunContext, generator: str, dev_full: bool) -> pd.DataFrame:
-    dev = ctx.store.read("candidates", f"{generator}__dev")
+    has_dev = ctx.store.done("candidates", f"{generator}__dev")
     if dev_full:
-        return dev.assign(split="dev")
-    ev = ctx.store.read("candidates", f"{generator}__eval").assign(split="eval")
-    keep = sorted(dev["question_id"].unique())[: ctx.dev_scored]
-    dev = dev[dev["question_id"].isin(keep)].assign(split="dev")
-    df = pd.concat([ev, dev], ignore_index=True)
+        if not has_dev:
+            raise FileNotFoundError(f"candidates {generator}__dev not generated")
+        return ctx.store.read("candidates", f"{generator}__dev").assign(split="dev")
+    if not ctx.store.done("candidates", f"{generator}__eval"):
+        raise FileNotFoundError(f"candidates {generator}__eval not generated (use dev_full for the phase-1 gate)")
+    parts = [ctx.store.read("candidates", f"{generator}__eval").assign(split="eval")]
+    if has_dev:  # the secondary generator has no dev pools
+        dev = ctx.store.read("candidates", f"{generator}__dev")
+        keep = sorted(dev["question_id"].unique())[: ctx.dev_scored]
+        parts.append(dev[dev["question_id"].isin(keep)].assign(split="dev"))
+    df = pd.concat(parts, ignore_index=True)
     return df.sort_values(["split", "question_id", "cand"], kind="stable").reset_index(drop=True)
 
 
 def _pool_from_dev(ctx: RunContext, run: ScoreRun, scorer: Scorer) -> Pool:
-    s = ctx.store.read("scores", dev_full_name(run.generator, run.verifier))
-    cands = ctx.store.read("candidates", f"{run.generator}__dev")
+    s = ctx.store.read("scores", dev_full_name(run.calib_gen, run.verifier))
+    cands = ctx.store.read("candidates", f"{run.calib_gen}__dev")
     s = s.merge(cands[["question_id", "cand", "text"]], on=["question_id", "cand"])
     qids = sorted(s["question_id"].unique())
     scores, ids = [], []
@@ -108,7 +114,7 @@ def _resolve_lambda(ctx: RunContext, run: ScoreRun) -> float:
 
 
 def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_after_shards: int | None = None) -> str:
-    name = dev_full_name(run.generator, run.verifier) if dev_full else run.name
+    name = dev_full_name(run.generator, run.verifier, run.condition) if dev_full else run.name
     if ctx.store.done("scores", name):
         return "skipped"
 
@@ -138,6 +144,7 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
             meta["calibration"] = {k: v for k, v in calib.meta.items() if k in ("recipe", "n_tokens", "n_boundary", "n_anchor")}
             meta["calibration"]["n_sequences"] = len(calib.sequences)
             meta["calibration"]["n_pairs"] = len(calib.pairs)
+            meta["calibration"]["calib_generator"] = run.calib_gen
         t0 = time.perf_counter()
         meta["quant"] = quantize_model(model, run.method, run.bits or 4, run.group_size, calib=calib,
                                        lam=_resolve_lambda(ctx, run))

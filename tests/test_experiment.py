@@ -34,9 +34,10 @@ def test_ch_runs_use_lambda_and_others_do_not(cfg):
         assert (r.lam is None) == (r.recipe not in ("ch", "ch_shuffled"))
 
 
-def test_phase4_uses_secondary_generator(cfg):
-    runs = phase_runs(cfg, "phase4_gen2", generator=None)
+def test_phase4_uses_secondary_generator_but_primary_calibration(cfg):
+    runs = phase_runs(cfg, "phase4_gen2", generator="G")
     assert len(runs) == 6 and all(r.generator == "llama3.2-3b" for r in runs)
+    assert all(r.calib_generator == "G" for r in runs)
 
 
 def test_run_names_are_filesystem_safe_and_unique_across_phases(cfg):

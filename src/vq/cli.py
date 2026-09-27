@@ -155,7 +155,9 @@ def cmd_generate(args) -> None:
     cfg, items, store = load_config(args.config), _items(), _store()
     g = cfg["generation"]
     ids = _manifest(args.split)[: args.limit] if args.limit else _manifest(args.split)
-    name = f"{args.generator}__{args.split}" + (f"-pilot{args.limit}" if args.limit else "")
+    # the secondary generator's gen2 subset plays the role of its evaluation pools
+    split_name = "eval" if args.split == "gen2" else args.split
+    name = f"{args.generator}__{split_name}" + (f"-pilot{args.limit}" if args.limit else "")
     if store.done("raw_candidates", name):
         print(f"{name} exists, skipping")
         return
@@ -208,12 +210,15 @@ def cmd_score(args) -> None:
     runs = phase_runs(cfg, args.phase, args.generator)
     if args.only:
         runs = [r for r in runs if r.verifier in args.only.split(",")]
-    # BF16 dev pools first: calibration recipes depend on them
-    for v in sorted({r.verifier for r in runs}):
-        gen = runs[0].generator
-        execute_run(ScoreRun(gen, v, "dev-full-bf16", "none"), ctx, dev_full=True)
+    if args.conditions:
+        runs = [r for r in runs if r.condition in args.conditions.split(",")]
+    # BF16 dev pools of the calibration generator first: recipes depend on them
+    for gen, v in sorted({(r.calib_gen, r.verifier) for r in runs}):
+        execute_run(ScoreRun(gen, v, "bf16", "none"), ctx, dev_full=True)
     for r in runs:
-        print(f"[{args.phase}] {r.name}: {execute_run(r, ctx)}", flush=True)
+        # --dev-only: phase-1 gate, before evaluation pools exist
+        status = execute_run(r, ctx, dev_full=args.dev_only)
+        print(f"[{args.phase}{' dev-only' if args.dev_only else ''}] {r.name}: {status}", flush=True)
 
 
 def cmd_select_lambda(args) -> None:
@@ -223,7 +228,7 @@ def cmd_select_lambda(args) -> None:
 
     cfg, ctx = load_config(args.config), _context(args)
     ctx.dev_scored = cfg["data"]["dev_scored_per_condition"]
-    execute_run(ScoreRun(args.generator, args.verifier, "dev-full-bf16", "none"), ctx, dev_full=True)
+    execute_run(ScoreRun(args.generator, args.verifier, "bf16", "none"), ctx, dev_full=True)
     execute_run(ScoreRun(args.generator, args.verifier, "bf16", "none"), ctx)
     ref, *_ = score_matrix(ctx.store, args.generator, args.verifier, "bf16", "dev")
     cands = {}
@@ -334,10 +339,13 @@ def cmd_gate(args) -> None:
     from .analysis import condition_metrics, evaluate_gate, mixed_fraction, score_matrix
 
     store = _store()
-    _, correct, _, _ = score_matrix(store, args.generator, args.verifier, "bf16", "dev")
-    m = condition_metrics(store, args.generator, args.verifier, "bf16", budgets=[32], split="dev", vote_temperature=None)
+    # phase 1 runs before evaluation pools exist: dev-only BF16 scores
+    _, correct, _, _ = score_matrix(store, args.generator, args.verifier, "dev-full-bf16", "dev")
+    n = correct.shape[1]  # full pool (32 in the experiment)
+    m = condition_metrics(store, args.generator, args.verifier, "dev-full-bf16", budgets=[n], split="dev",
+                          vote_temperature=None, reference="dev-full-bf16")
     res = evaluate_gate(
-        acc_bf16_32=float(m[32]["acc_ref"].mean()), acc_random_32=float(m[32]["random"].mean()),
+        acc_bf16_32=float(m[n]["acc_ref"].mean()), acc_random_32=float(m[n]["random"].mean()),
         mixed_frac=mixed_fraction(correct), projected_eur=args.projected_eur, implementation_ok=args.implementation_ok,
     )
     print(json.dumps(res, indent=1))
@@ -375,6 +383,8 @@ def main(argv=None) -> None:
     sp.add_argument("--phase", required=True)
     sp.add_argument("--generator", default=None)
     sp.add_argument("--only", default=None, help="comma-separated verifier keys")
+    sp.add_argument("--conditions", default=None, help="comma-separated condition names")
+    sp.add_argument("--dev-only", action="store_true", help="score development pools only (phase-1 gate)")
     sp = add("select-lambda", cmd_select_lambda)
     sp.add_argument("--generator", required=True)
     sp.add_argument("--verifier", default="sky-4b")
