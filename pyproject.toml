@@ -23,7 +23,7 @@ dependencies = [
 gpu = ["vllm>=0.8", "bitsandbytes>=0.45"]
 # only for phase 6 (packed GPTQ kernels); may compile CUDA extensions
 packed = ["gptqmodel>=2.0", "optimum>=1.24"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "bitsandbytes>=0.45"]  # bnb: CPU parity test for NF4
 
 [build-system]
 requires = ["hatchling"]

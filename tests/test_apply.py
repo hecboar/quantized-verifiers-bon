@@ -113,3 +113,10 @@ def test_calibration_capture_works_when_forward_rejects_use_cache(calib_ids):
     wrapped = NoCacheKw(base)
     stats = quantize_model(wrapped, method="gptq", bits=4, group_size=32, calib=CalibrationSet(calib_ids))
     assert stats["method"] == "gptq"
+
+
+def test_awq_activation_collection_is_bounded_during_capture(tiny_rm, calib_ids):
+    calib = CalibrationSet(calib_ids, awq_max_rows=64)
+    stats = quantize_model(tiny_rm, method="awq", bits=4, group_size=32, calib=calib)
+    assert stats["awq_rows_collected_max"] <= 64
+    assert stats["hessians_allocated"] == 0  # AWQ never needs GPTQ Hessians

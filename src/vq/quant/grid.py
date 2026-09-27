@@ -19,14 +19,19 @@ NF4_CODEBOOK = torch.tensor(
 )
 
 
-def sym_params(x: torch.Tensor, bits: int) -> tuple[torch.Tensor, torch.Tensor]:
+def sym_params(x: torch.Tensor, bits: int, fp16_scales: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """Per-row symmetric scale/zero for a [rows, cols] block."""
     maxq = 2**bits - 1
     xmax = x.abs().amax(dim=1, keepdim=True)
     xmax = torch.where(xmax == 0, torch.ones_like(xmax), xmax)
-    # fp16-representable scales: packed kernels store fp16 scales, so fake-quant
-    # and packed execution use bit-identical dequantized weights
-    scale = (2 * xmax / maxq).half().float()
+    # fp16-representable scales, as stored by packed kernels (the dequantized
+    # weight is then cast to the model dtype, so fake-quant (BF16) and packed
+    # (FP16) execution are close but NOT bit-identical: parity is measured).
+    # Unlike the reference GPTQ quantizer, groups with no negative values are
+    # also mirrored (the reference clips them at ~0.47 xmax).
+    scale = 2 * xmax / maxq
+    if fp16_scales:
+        scale = scale.half().float()
     zero = torch.full_like(scale, (maxq + 1) / 2)
     return scale, zero
 
@@ -37,7 +42,8 @@ def quantize_with(x: torch.Tensor, scale: torch.Tensor, zero: torch.Tensor, bits
     return scale * (q - zero)
 
 
-def quantize_rtn(w: torch.Tensor, bits: int, group_size: int | None, return_params: bool = False):
+def quantize_rtn(w: torch.Tensor, bits: int, group_size: int | None, return_params: bool = False,
+                 fp16_scales: bool = True):
     dtype = w.dtype
     x = w.float()
     out = torch.empty_like(x)
@@ -45,7 +51,7 @@ def quantize_rtn(w: torch.Tensor, bits: int, group_size: int | None, return_para
     scales, zeros = [], []
     for g in range(0, x.shape[1], step):
         blk = x[:, g : g + step]
-        scale, zero = sym_params(blk, bits)
+        scale, zero = sym_params(blk, bits, fp16_scales)
         out[:, g : g + step] = quantize_with(blk, scale, zero, bits)
         scales.append(scale)
         zeros.append(zero)

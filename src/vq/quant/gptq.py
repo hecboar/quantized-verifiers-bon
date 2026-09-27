@@ -56,6 +56,7 @@ def gptq_quantize(
     damp: float = 0.01,
     block_size: int = 128,
     return_params: bool = False,
+    fp16_scales: bool = True,
 ):
     """Returns dequantized weights (same shape/dtype as w); with
     return_params also the per-group scales and zeros [out, n_groups].
@@ -79,7 +80,7 @@ def gptq_quantize(
     scale = zero = None
     all_scales, all_zeros = [], []
     if group_size is None:
-        scale, zero = sym_params(W, bits)
+        scale, zero = sym_params(W, bits, fp16_scales)
         all_scales.append(scale)
         all_zeros.append(zero)
 
@@ -94,7 +95,7 @@ def gptq_quantize(
             col = i1 + i
             if group_size is not None and col % group_size == 0:
                 # reference quirk: params from W (not W1) for the group
-                scale, zero = sym_params(W[:, col : col + group_size], bits)
+                scale, zero = sym_params(W[:, col : col + group_size], bits, fp16_scales)
                 all_scales.append(scale)
                 all_zeros.append(zero)
             w_col = W1[:, i : i + 1]

@@ -126,24 +126,36 @@ def quantize_model(
         return out
 
     full_names = {id(m): n for n, m in target_linears(model)}
+    hessians_allocated, awq_rows_max = 0, 0
     layers = decoder_layers(model)
     inputs = _capture_layer0_inputs(model, layers, calib.sequences)
     diff_rows: dict[str, int] = {}
 
     for li, layer in enumerate(layers):
         lins = {n: m for n, m in layer.named_modules() if isinstance(m, nn.Linear)}
-        acc = {n: HessianAccumulator(m.in_features, device=m.weight.device) for n, m in lins.items()}
+        # allocate only what the method needs (AWQ: no Hessians; CH: last tokens)
+        acc = ({n: HessianAccumulator(m.in_features, device=m.weight.device) for n, m in lins.items()}
+               if method == "gptq" else {})
+        hessians_allocated += len(acc)
+        want_last = method == "gptq" and bool(calib.pairs) and lam > 0
         last: dict[str, dict[int, torch.Tensor]] = {n: {} for n in lins}
         rows: dict[str, list[torch.Tensor]] = {n: [] for n in lins}
+        per_seq = -(-calib.awq_max_rows // max(1, len(inputs)))  # AWQ rows kept per sequence
         state = {"seq": 0}
 
         def make_hook(name):
             def hook(_m, inp, _out):
                 x = inp[0].detach()
-                acc[name].add(x)
-                last[name][state["seq"]] = x[0, -1].float()
-                if method == "awq":
-                    rows[name].append(x.reshape(-1, x.shape[-1]).float().cpu())
+                if method == "gptq":
+                    acc[name].add(x)
+                if want_last:
+                    last[name][state["seq"]] = x[0, -1].float()
+                if method == "awq":  # bounded sampling during capture, not after
+                    flat = x.reshape(-1, x.shape[-1])
+                    if flat.shape[0] > per_seq:
+                        g = torch.Generator().manual_seed(li * 100_003 + state["seq"])
+                        flat = flat[torch.randperm(flat.shape[0], generator=g)[:per_seq].to(flat.device)]
+                    rows[name].append(flat.float().cpu())
             return hook
 
         handles = [m.register_forward_hook(make_hook(n)) for n, m in lins.items()]
@@ -166,10 +178,8 @@ def quantize_model(
                 if keep_params:
                     params[full_names[id(lin)]] = (sc.cpu(), zr.cpu())
             else:  # awq
-                X = torch.cat(rows[name])
-                if X.shape[0] > calib.awq_max_rows:
-                    g = torch.Generator().manual_seed(li)
-                    X = X[torch.randperm(X.shape[0], generator=g)[: calib.awq_max_rows]]
+                X = torch.cat(rows[name])[: calib.awq_max_rows]
+                awq_rows_max = max(awq_rows_max, X.shape[0])
                 q = awq_quantize(lin.weight.data, X.to(lin.weight.device), bits, group_size)
             _set_weight(lin, q)
 
@@ -188,6 +198,8 @@ def quantize_model(
         "n_pairs": len(calib.pairs),
         "lam": lam,
         "diff_rows_per_linear": diff_rows,
+        "hessians_allocated": hessians_allocated,
+        "awq_rows_collected_max": awq_rows_max,
     }
     if keep_params:
         out["params"] = params

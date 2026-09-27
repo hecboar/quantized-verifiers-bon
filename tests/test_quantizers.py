@@ -151,3 +151,15 @@ class TestAWQ:
         w = torch.randn(16, 128)
         err = lambda q: ((x @ (w - q).T) ** 2).mean()
         assert err(awq_quantize(w, x, 4, 128)) <= err(quantize_rtn(w, 4, 128)) + 1e-6
+
+
+class TestNF4MatchesBitsandbytes:
+    @pytest.mark.parametrize("shape", [(64, 256), (48, 1024)])
+    def test_dequantized_weights_match_bnb(self, shape):
+        F = pytest.importorskip("bitsandbytes.functional")
+        torch.manual_seed(shape[1])
+        w = torch.randn(*shape)
+        q, st = F.quantize_4bit(w, blocksize=64, quant_type="nf4")
+        ref = F.dequantize_4bit(q, st)
+        ours = quantize_nf4(w, block_size=64)
+        torch.testing.assert_close(ours, ref, atol=0, rtol=0)  # bit-identical to bitsandbytes
