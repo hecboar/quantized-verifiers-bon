@@ -223,27 +223,28 @@ def cmd_score(args) -> None:
 
 
 def cmd_select_lambda(args) -> None:
+    """CH lambda chosen on the frozen dev-scored subset only (no eval scoring),
+    then frozen for every CH run (plan §5)."""
     from .analysis import score_matrix
     from .experiment import ScoreRun, load_config
     from .runner import execute_run, select_lambda
 
     cfg, ctx = load_config(args.config), _context(args)
-    ctx.dev_scored = cfg["data"]["dev_scored_per_condition"]
-    execute_run(ScoreRun(args.generator, args.verifier, "bf16", "none"), ctx, dev_full=True)
-    execute_run(ScoreRun(args.generator, args.verifier, "bf16", "none"), ctx)
-    ref, *_ = score_matrix(ctx.store, args.generator, args.verifier, "bf16", "dev")
+    execute_run(ScoreRun(args.generator, args.verifier, "bf16", "none"), ctx, dev_full=True)  # CH pair source
+    execute_run(ScoreRun(args.generator, args.verifier, "bf16", "none"), ctx, dev_scored_only=True)
+    ref, *_ = score_matrix(ctx.store, args.generator, args.verifier, "devsub-bf16", "dev")
     cands = {}
     for lam in cfg["calibration"]["lambda_grid"]:
         run = ScoreRun(args.generator, args.verifier, f"lamsel-{lam}", "gptq", 4, 128, "ch", 0, lam)
-        execute_run(run, ctx)
-        cands[lam], *_ = score_matrix(ctx.store, args.generator, args.verifier, f"lamsel-{lam}", "dev")
+        execute_run(run, ctx, dev_scored_only=True)
+        cands[lam], *_ = score_matrix(ctx.store, args.generator, args.verifier, f"devsub-lamsel-{lam}", "dev")
     best = select_lambda(ref, cands)
     lam_file = OUT / "frozen_lambda.json"
     frozen = json.loads(lam_file.read_text()) if lam_file.exists() else {}
-    frozen[args.verifier] = best
-    # CH-GPTQ for other verifiers reuses the lambda chosen on the reference model
-    for v in ("sky-4b", "sky-8b"):
-        frozen.setdefault(v, best)
+    if frozen and any(frozen.get(v) not in (None, best) for v in ("sky-4b", "sky-8b")):
+        sys.exit(f"refusing to overwrite a different frozen lambda {frozen} with {best}")
+    # CH-GPTQ for both ORMs reuses the lambda chosen on the reference model
+    frozen.update({args.verifier: best, "sky-4b": best, "sky-8b": best})
     lam_file.write_text(json.dumps(frozen, indent=1))
     print(f"frozen lambda: {frozen}")
 

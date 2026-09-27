@@ -23,7 +23,7 @@ from .selection import draw_subsets, fit_vote_temperature, select_bon, tiebreak_
 from .stats import holm, paired_bootstrap
 from .store import CampaignStore
 
-SKIP_PREFIXES = ("dev-full", "lamsel-")
+SKIP_PREFIXES = ("dev-full", "lamsel-", "devsub-")
 # plan §6: the three pre-registered confirmatory contrasts (fixed family for Holm)
 CONFIRMATORY = ("c1_delta_8b_gptq_w4", "c2_memory_frontier", "c3_ch_vs_dpq")
 # memory measurement -> score condition of the *same* deployment

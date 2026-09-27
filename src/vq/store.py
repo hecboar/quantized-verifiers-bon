@@ -57,6 +57,17 @@ class CampaignStore:
         d = self._shard_dir(kind, name)
         return sorted(int(p.stem) for p in d.glob("*.parquet")) if d.exists() else []
 
+    def check_shard_fingerprint(self, kind: str, name: str, fingerprint: str) -> None:
+        """Pin a campaign's shards to one run fingerprint (first writer wins)."""
+        d = self._shard_dir(kind, name)
+        f = d / "_fingerprint.txt"
+        if f.exists():
+            if f.read_text().strip() != fingerprint:
+                raise RuntimeError(f"{kind}/{name}: existing shards come from a different run fingerprint")
+        else:
+            d.mkdir(parents=True, exist_ok=True)
+            f.write_text(fingerprint)
+
     def merge_shards(self, kind: str, name: str, meta: dict | None = None) -> Path:
         d = self._shard_dir(kind, name)
         parts = [pd.read_parquet(p) for p in sorted(d.glob("*.parquet"))]

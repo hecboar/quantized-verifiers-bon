@@ -8,6 +8,8 @@ label-free calibration recipes.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -74,8 +76,22 @@ def _fingerprints(model) -> dict[str, tuple[float, float]]:
             for n, p in model.named_parameters()}
 
 
-def _work_rows(ctx: RunContext, generator: str, dev_full: bool) -> pd.DataFrame:
+def _dev_scored_rows(ctx: RunContext, dev: pd.DataFrame) -> pd.DataFrame:
+    if ctx.dev_scored_ids is not None:
+        keep = list(ctx.dev_scored_ids)
+    else:  # seeded sample, never "first N sorted" (that would be one domain only)
+        qs = sorted(dev["question_id"].unique())
+        keep = list(np.random.default_rng(0).permutation(qs)[: ctx.dev_scored])
+    return dev[dev["question_id"].isin(keep)].assign(split="dev")
+
+
+def _work_rows(ctx: RunContext, generator: str, dev_full: bool, dev_scored_only: bool = False) -> pd.DataFrame:
     has_dev = ctx.store.done("candidates", f"{generator}__dev")
+    if dev_scored_only:  # lambda selection: no evaluation pools needed
+        if not has_dev:
+            raise FileNotFoundError(f"candidates {generator}__dev not generated")
+        df = _dev_scored_rows(ctx, ctx.store.read("candidates", f"{generator}__dev"))
+        return df.sort_values(["split", "question_id", "cand"], kind="stable").reset_index(drop=True)
     if dev_full:
         if not has_dev:
             raise FileNotFoundError(f"candidates {generator}__dev not generated")
@@ -84,13 +100,7 @@ def _work_rows(ctx: RunContext, generator: str, dev_full: bool) -> pd.DataFrame:
         raise FileNotFoundError(f"candidates {generator}__eval not generated (use dev_full for the phase-1 gate)")
     parts = [ctx.store.read("candidates", f"{generator}__eval").assign(split="eval")]
     if has_dev:  # the secondary generator has no dev pools
-        dev = ctx.store.read("candidates", f"{generator}__dev")
-        if ctx.dev_scored_ids is not None:
-            keep = list(ctx.dev_scored_ids)
-        else:  # seeded sample, never "first N sorted" (that would be one domain only)
-            qs = sorted(dev["question_id"].unique())
-            keep = list(np.random.default_rng(0).permutation(qs)[: ctx.dev_scored])
-        parts.append(dev[dev["question_id"].isin(keep)].assign(split="dev"))
+        parts.append(_dev_scored_rows(ctx, ctx.store.read("candidates", f"{generator}__dev")))
     df = pd.concat(parts, ignore_index=True)
     return df.sort_values(["split", "question_id", "cand"], kind="stable").reset_index(drop=True)
 
@@ -118,15 +128,44 @@ def _resolve_lambda(ctx: RunContext, run: ScoreRun) -> float:
     return float(run.lam)
 
 
-def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_after_shards: int | None = None) -> str:
-    name = dev_full_name(run.generator, run.verifier, run.condition) if dev_full else run.name
+def _run_fingerprint(run: ScoreRun, ctx: RunContext, rows: pd.DataFrame, lam: float, mode: str) -> str:
+    """Identity of a run: resuming or reusing it with any different input or
+    setting must fail loudly instead of mixing results."""
+    spec = ctx.verifier_specs[run.verifier]
+    h = hashlib.sha256()
+    h.update(json.dumps({
+        "run": {k: v for k, v in run.__dict__.items()}, "lam": lam, "mode": mode, "hf_id": spec.hf_id,
+        "shard_size": ctx.shard_size, "dtype": str(ctx.dtype), "n_calib": ctx.n_calib,
+        "dev_scored_ids": list(ctx.dev_scored_ids) if ctx.dev_scored_ids is not None else ctx.dev_scored,
+    }, sort_keys=True, default=str).encode())
+    h.update(pd.util.hash_pandas_object(rows[["split", "question_id", "cand", "text"]], index=False).values.tobytes())
+    return h.hexdigest()
+
+
+def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_after_shards: int | None = None,
+                dev_scored_only: bool = False) -> str:
+    """dev_full: all development pools (calibration source / gate).
+    dev_scored_only: only the frozen dev-scored subset (lambda selection)."""
+    if dev_full:
+        name, mode = dev_full_name(run.generator, run.verifier, run.condition), "dev_full"
+    elif dev_scored_only:
+        name, mode = f"{run.generator}__{run.verifier}__devsub-{run.condition}", "dev_scored"
+    else:
+        name, mode = run.name, "default"
+    rows = _work_rows(ctx, run.generator, dev_full, dev_scored_only)
+    lam = _resolve_lambda(ctx, run) if run.method == "gptq" else 0.0
+    fp = _run_fingerprint(run, ctx, rows, lam, mode)
     if ctx.store.done("scores", name):
+        if ctx.store.meta("scores", name).get("fingerprint") != fp:
+            raise RuntimeError(f"{name} exists with a different fingerprint (inputs or settings changed); "
+                               "delete it explicitly to recompute")
         return "skipped"
+    ctx.store.check_shard_fingerprint("scores", name, fp)
 
     spec = ctx.verifier_specs[run.verifier]
     tok, model = ctx.loader(spec, device=ctx.device, dtype=ctx.dtype)
     scorer = Scorer(spec, tok, model, max_tokens=ctx.max_tokens)
-    meta: dict = {"run": run.__dict__, "name": name, "torch": torch.__version__}
+    meta: dict = {"run": run.__dict__, "name": name, "torch": torch.__version__, "fingerprint": fp, "mode": mode}
     try:
         import transformers
 
@@ -151,8 +190,7 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
             meta["calibration"]["n_pairs"] = len(calib.pairs)
             meta["calibration"]["calib_generator"] = run.calib_gen
         t0 = time.perf_counter()
-        meta["quant"] = quantize_model(model, run.method, run.bits or 4, run.group_size, calib=calib,
-                                       lam=_resolve_lambda(ctx, run))
+        meta["quant"] = quantize_model(model, run.method, run.bits or 4, run.group_size, calib=calib, lam=lam)
         meta["quant"]["seconds"] = time.perf_counter() - t0
         after = _fingerprints(model)
         changed = [n for n in before if before[n] != after[n]]
@@ -164,8 +202,10 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
             "head_or_embed_changed": any(("embed" in n or "norm" in n or n.startswith("score")) for n in changed),
         }
 
-    rows = _work_rows(ctx, run.generator, dev_full)
     done = set(ctx.store.shard_ids("scores", name))
+    n_shards = -(-len(rows) // ctx.shard_size)
+    if done - set(range(n_shards)):
+        raise RuntimeError(f"{name}: unexpected shard ids {sorted(done - set(range(n_shards)))}; refusing to merge")
     n_tokens, seconds, written = 0, 0.0, 0
     for sh, start in enumerate(range(0, len(rows), ctx.shard_size)):
         if sh in done:
@@ -189,7 +229,11 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
             return "partial"
 
     meta["throughput"] = {"tokens": n_tokens, "seconds": seconds, "tok_per_s": n_tokens / seconds if seconds else None}
-    ctx.store.merge_shards("scores", name, meta=meta)
+    merged = ctx.store.merge_shards("scores", name, meta=meta)
+    df = ctx.store.read("scores", name)
+    if len(df) != len(rows) or df.duplicated(["split", "question_id", "cand"]).any():
+        merged.unlink()
+        raise RuntimeError(f"{name}: merged shards do not match the expected rows")
     del model
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

@@ -68,3 +68,16 @@ def test_gate_output_is_json(env, capsys):
     cli.main(["gate", "--generator", "G", "--verifier", "sky-4b", "--projected-eur", "60", "--implementation-ok"])
     res = json.loads(capsys.readouterr().out)
     assert set(res["criteria"]) == {"implementation_ok", "bf16_useful", "mixed_pools", "budget_ok"}
+
+
+def test_select_lambda_scores_dev_subset_only(env, monkeypatch):
+    store, ev, pools = env
+    cli.main(["select-lambda", "--generator", "G", "--verifier", "sky-4b"])
+    names = store.list("scores")
+    assert any(n.startswith("G__sky-4b__devsub-lamsel-") for n in names)
+    assert not store.done("candidates", "G__eval")  # worked before eval pools even exist
+    for n in names:
+        if "lamsel" in n:
+            assert set(store.read("scores", n)["split"]) == {"dev"}
+    frozen = json.loads((cli.OUT / "frozen_lambda.json").read_text())
+    assert frozen["sky-4b"] == frozen["sky-8b"]

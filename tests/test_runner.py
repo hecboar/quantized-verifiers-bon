@@ -173,3 +173,29 @@ def test_nonfinite_scores_abort_the_run(ctx, monkeypatch):
     with pytest.raises(ValueError, match="non-finite"):
         execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)
     assert not ctx.store.done("scores", "G__tiny__bf16")
+
+
+def test_resume_with_changed_parameters_is_refused(ctx):
+    run = ScoreRun("G", "tiny", "bf16", "none")
+    execute_run(run, ctx, stop_after_shards=1)
+    ctx.shard_size = 7  # different shard layout would misalign rows
+    with pytest.raises(RuntimeError, match="fingerprint"):
+        execute_run(run, ctx)
+
+
+def test_completed_run_with_changed_inputs_is_not_silently_reused(ctx):
+    run = ScoreRun("G", "tiny", "bf16", "none")
+    execute_run(run, ctx)
+    cands = ctx.store.read("candidates", "G__eval")
+    cands.loc[0, "text"] = "a different candidate"
+    ctx.store.write("candidates", "G__eval", cands, overwrite=True)
+    with pytest.raises(RuntimeError, match="fingerprint"):
+        execute_run(run, ctx)
+
+
+def test_merge_rejects_unexpected_extra_shards(ctx):
+    run = ScoreRun("G", "tiny", "bf16", "none")
+    execute_run(run, ctx, stop_after_shards=1)
+    ctx.store.write_shard("scores", run.name, 99, ctx.store.read("candidates", "G__eval").head(1))
+    with pytest.raises(RuntimeError, match="shard"):
+        execute_run(run, ctx)
