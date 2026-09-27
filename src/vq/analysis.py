@@ -119,3 +119,18 @@ def evaluate_gate(acc_bf16_32: float, acc_random_32: float, mixed_frac: float, p
         "budget_ok": projected_eur <= ceiling,
     }
     return {"go": all(crit.values()), "criteria": crit}
+
+
+def compare_conditions(store: CampaignStore, generator: str, verifier: str, a: str, b: str, split: str = "eval") -> dict:
+    """Numerical parity between two conditions on the same candidates (e.g.
+    fake-quant vs packed deployment): score differences and winner agreement."""
+    sa, _, _, qa = score_matrix(store, generator, verifier, a, split)
+    sb, _, _, qb = score_matrix(store, generator, verifier, b, split)
+    if qa != qb:
+        raise ValueError("conditions cover different questions")
+    Q, C = sa.shape
+    subsets = draw_subsets(Q, C, C, 1, 0)
+    prio = tiebreak_priority(Q, C, 11)
+    d = np.abs(sa - sb)
+    return {"n_questions": Q, "max_abs_diff": float(d.max()), "mean_abs_diff": float(d.mean()),
+            "winner_agreement_full_pool": float((select_bon(sa, subsets, prio) == select_bon(sb, subsets, prio)).mean())}

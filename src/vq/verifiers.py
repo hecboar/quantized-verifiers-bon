@@ -178,6 +178,30 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
     return tok, model.to(device).eval()
 
 
+def load_verifier_deployed(spec: VerifierSpec, scheme: str, device: str = "cuda", dtype=torch.bfloat16,
+                           packed_dir: str | None = None, tokenizer: bool = True):
+    """Real deployments for the memory frontier: bitsandbytes NF4 (reward head
+    kept in full precision) or our packed GPTQ checkpoint (GPTQ kernels)."""
+    from transformers import AutoConfig, AutoModel, AutoModelForSequenceClassification, AutoTokenizer, BitsAndBytesConfig
+
+    token = os.environ.get("HF_TOKEN")
+    src = packed_dir if scheme == "gptq-w4" else spec.hf_id
+    tok = AutoTokenizer.from_pretrained(src, token=token, trust_remote_code=spec.kind == "prm") if tokenizer else None
+    kw = dict(token=token, device_map=device)
+    if scheme == "nf4":
+        kw["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_use_double_quant=False, llm_int8_skip_modules=["score"])
+    elif scheme != "gptq-w4":
+        raise ValueError(scheme)
+    if spec.kind == "orm":
+        model = from_pretrained_compat(AutoModelForSequenceClassification, src, dtype=dtype, num_labels=1, **kw)
+    else:
+        cfg = patch_prm_config(AutoConfig.from_pretrained(src, trust_remote_code=True, token=token), tok)
+        model = from_pretrained_compat(AutoModel, src, dtype=dtype, config=cfg, trust_remote_code=True, **kw)
+    return tok, model.eval()
+
+
 class Scorer:
     """Scores (question, response) pairs; returns score and, for PRMs, the
     per-step rewards (saved so min/last can both be derived later)."""

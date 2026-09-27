@@ -311,19 +311,31 @@ def cmd_export_packed(args) -> None:
     print(f"exported {pdir}")
 
 
-def cmd_score_packed(args) -> None:
-    """Full-test scoring with the packed kernel (replaces fake-quant numbers on the frontier)."""
+def cmd_score_deployed(args) -> None:
+    """Full scoring with the real deployment (bitsandbytes NF4 or packed GPTQ
+    kernels): the memory frontier uses these scores, never fake-quant ones."""
     import torch
 
     from .experiment import ScoreRun
     from .runner import execute_run
-    from .verifiers import VerifierSpec
+    from .verifiers import VERIFIERS, load_verifier_deployed
 
     ctx = _context(args)
-    pdir = OUT / "packed" / f"{args.verifier}__gptq-w4"
-    ctx.verifier_specs = {args.verifier: VerifierSpec(args.verifier, str(pdir), "orm")}
-    ctx.dtype = torch.float16
-    print(execute_run(ScoreRun(args.generator, args.verifier, "gptq-w4-packed", "none"), ctx))
+    spec = VERIFIERS[args.verifier]
+    pdir = str(OUT / "packed" / f"{args.verifier}__gptq-w4")
+    cond = {"nf4": "nf4-bnb", "gptq-w4": "gptq-w4-packed"}[args.scheme]
+    ctx.dtype = torch.bfloat16 if args.scheme == "nf4" else torch.float16
+    ctx.loader = lambda sp, device="cuda", dtype=None: load_verifier_deployed(sp, args.scheme, device, dtype, pdir)
+    print(execute_run(ScoreRun(args.generator, args.verifier, cond, "none"), ctx))
+    del spec
+
+
+def cmd_parity(args) -> None:
+    from .analysis import compare_conditions
+
+    rep = compare_conditions(_store(), args.generator, args.verifier, args.a, args.b, args.split)
+    (OUT / f"parity_{args.verifier}_{args.a}_vs_{args.b}.json").write_text(json.dumps(rep, indent=1))
+    print(json.dumps(rep, indent=1))
 
 
 def cmd_measure_memory(args) -> None:
@@ -394,9 +406,16 @@ def main(argv=None) -> None:
     sp.add_argument("--questions", type=int, default=16)
     sp = add("export-packed", cmd_export_packed)
     sp.add_argument("--verifier", required=True)
-    sp = add("score-packed", cmd_score_packed)
+    sp = add("score-deployed", cmd_score_deployed)
     sp.add_argument("--verifier", required=True)
     sp.add_argument("--generator", required=True)
+    sp.add_argument("--scheme", choices=["nf4", "gptq-w4"], required=True)
+    sp = add("parity", cmd_parity)
+    sp.add_argument("--generator", required=True)
+    sp.add_argument("--verifier", required=True)
+    sp.add_argument("--a", required=True, help="e.g. nf4 (fake-quant)")
+    sp.add_argument("--b", required=True, help="e.g. nf4-bnb (deployment)")
+    sp.add_argument("--split", default="dev")
     sp = add("measure-memory", cmd_measure_memory)
     sp.add_argument("--verifiers", default="sky-1.7b,sky-4b,sky-8b,prm-7b")
     sp = add("gate", cmd_gate)
