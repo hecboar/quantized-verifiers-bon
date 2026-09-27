@@ -50,6 +50,10 @@ def _pad_right(seqs: list[list[int]], pad_id: int, device):
 @torch.no_grad()
 def orm_score_ids(model, seqs: list[list[int]], pad_id: int, max_tokens: int = 16_384) -> list[float]:
     device = next(model.parameters()).device
+    # HF sequence-classification pooling finds the last token via pad_token_id:
+    # a pad-valued token inside a sequence would silently move the pooled position
+    if any(pad_id in s for s in seqs):
+        raise ValueError(f"pad token id {pad_id} occurs inside a sequence; ORM pooling would be wrong")
     out = [0.0] * len(seqs)
     for batch in length_batches([len(s) for s in seqs], max_tokens):
         ids, mask = _pad_right([seqs[i] for i in batch], pad_id, device)

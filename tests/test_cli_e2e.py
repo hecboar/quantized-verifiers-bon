@@ -19,7 +19,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "OUT", out)
     cli.prepare_data(load_config(cli.DEFAULT_CFG), fake_loaders(), data)
     ev = json.loads((data / "manifest_eval.json").read_text())["ids"][:10]
-    dev = json.loads((data / "manifest_dev.json").read_text())["ids"][:12]
+    dev = json.loads((data / "manifest_gate.json").read_text())["ids"]  # gate subset must be fully pooled
 
     def pools(ids):
         df = _candidates(n_q=len(ids), C=6, prefix="x")

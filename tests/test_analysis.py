@@ -64,3 +64,38 @@ def test_gate_pass_and_fail():
     bad = evaluate_gate(acc_bf16_32=0.52, acc_random_32=0.50, mixed_frac=0.40, projected_eur=60, implementation_ok=True,
                         ceiling=71)
     assert bad["go"] is False and bad["criteria"]["bf16_useful"] is False
+
+
+def test_score_matrix_rejects_missing_candidates(tmp_path):
+    store = _setup(tmp_path)
+    s = store.read("scores", "G__v__q")
+    store.write("scores", "G__v__q", s.iloc[:-1], overwrite=True)  # one candidate missing
+    with pytest.raises(ValueError, match="coverage"):
+        score_matrix(store, "G", "v", "q", "eval")
+
+
+def test_score_matrix_rejects_duplicate_scores(tmp_path):
+    store = _setup(tmp_path)
+    s = store.read("scores", "G__v__q")
+    store.write("scores", "G__v__q", pd.concat([s, s.iloc[:1]]), overwrite=True)
+    with pytest.raises(ValueError, match="duplicate"):
+        score_matrix(store, "G", "v", "q", "eval")
+
+
+def test_score_matrix_rejects_other_question_set(tmp_path):
+    # same pool size, different questions: must not be paired by position
+    store = _setup(tmp_path)
+    s = store.read("scores", "G__v__q")
+    s["question_id"] = s["question_id"].str.replace("e0", "zz", regex=False)
+    store.write("scores", "G__v__q", s, overwrite=True)
+    with pytest.raises(ValueError):
+        condition_metrics(store, "G", "v", "q", budgets=[4], repeats=5, seed=0)
+
+
+def test_score_matrix_rejects_nonfinite(tmp_path):
+    store = _setup(tmp_path)
+    s = store.read("scores", "G__v__q")
+    s.loc[3, "score"] = float("nan")
+    store.write("scores", "G__v__q", s, overwrite=True)
+    with pytest.raises(ValueError, match="finite"):
+        score_matrix(store, "G", "v", "q", "eval")

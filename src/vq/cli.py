@@ -191,6 +191,7 @@ def _context(args):
     return RunContext(
         store=_store(), questions={k: v.question for k, v in items.items()}, device="cuda",
         verifier_specs=VERIFIERS, generic_texts=_generic_texts(), n_calib=128,
+        dev_scored_ids=_manifest("gate"),  # frozen stratified dev subset scored in every condition
         frozen_lambda=json.loads(lam_file.read_text()) if lam_file.exists() else {},
     )
 
@@ -329,10 +330,11 @@ def cmd_gate(args) -> None:
 
     store = _store()
     # phase 1 runs before evaluation pools exist: dev-only BF16 scores
-    _, correct, _, _ = score_matrix(store, args.generator, args.verifier, "dev-full-bf16", "dev")
+    gate_q = _manifest("gate")  # the pre-registered 100 gate questions, not all dev
+    _, correct, _, _ = score_matrix(store, args.generator, args.verifier, "dev-full-bf16", "dev", questions=gate_q)
     n = correct.shape[1]  # full pool (32 in the experiment)
     m = condition_metrics(store, args.generator, args.verifier, "dev-full-bf16", budgets=[n], split="dev",
-                          vote_temperature=None, reference="dev-full-bf16")
+                          vote_temperature=None, reference="dev-full-bf16", questions=gate_q)
     res = evaluate_gate(
         acc_bf16_32=float(m[n]["acc_ref"].mean()), acc_random_32=float(m[n]["random"].mean()),
         mixed_frac=mixed_fraction(correct), projected_eur=args.projected_eur, implementation_ok=args.implementation_ok,

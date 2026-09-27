@@ -1,7 +1,7 @@
 """End-to-end execution of one scoring run (plan §4-§5):
 candidates -> (calibration) -> fake-quant -> audit -> sharded scoring -> store.
 
-Every run scores the full evaluation pools plus the first `dev_scored`
+Every run scores the full evaluation pools plus the frozen dev-scored set (`dev_scored_ids`)
 development questions (needed by the gate and by C3). The special
 `dev_full=True` BF16 run scores all development pools; its scores feed the
 label-free calibration recipes.
@@ -33,6 +33,7 @@ class RunContext:
     verifier_specs: dict[str, VerifierSpec] = field(default_factory=dict)
     n_calib: int = 128
     dev_scored: int = 100
+    dev_scored_ids: list[str] | None = None  # frozen, stratified (manifest_gate); preferred
     shard_size: int = 2000
     generic_ids: list[list[int]] | None = None
     generic_texts: list[str] | None = None  # tokenised per verifier (preferred)
@@ -84,7 +85,11 @@ def _work_rows(ctx: RunContext, generator: str, dev_full: bool) -> pd.DataFrame:
     parts = [ctx.store.read("candidates", f"{generator}__eval").assign(split="eval")]
     if has_dev:  # the secondary generator has no dev pools
         dev = ctx.store.read("candidates", f"{generator}__dev")
-        keep = sorted(dev["question_id"].unique())[: ctx.dev_scored]
+        if ctx.dev_scored_ids is not None:
+            keep = list(ctx.dev_scored_ids)
+        else:  # seeded sample, never "first N sorted" (that would be one domain only)
+            qs = sorted(dev["question_id"].unique())
+            keep = list(np.random.default_rng(0).permutation(qs)[: ctx.dev_scored])
         parts.append(dev[dev["question_id"].isin(keep)].assign(split="dev"))
     df = pd.concat(parts, ignore_index=True)
     return df.sort_values(["split", "question_id", "cand"], kind="stable").reset_index(drop=True)
@@ -170,6 +175,8 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
         res = scorer.score([ctx.questions[q] for q in part["question_id"]], part["text"].tolist())
         seconds += time.perf_counter() - t0
         n_tokens += sum(res["n_tokens"])
+        if not np.isfinite(np.asarray(res["score"], dtype=float)).all():
+            raise ValueError(f"{name}: non-finite scores in shard {sh}; aborting (nothing written)")
         out = part[["split", "question_id", "cand"]].copy()
         for k in ("score", "score_last", "n_steps", "n_tokens", "truncated"):
             if k in res:

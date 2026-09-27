@@ -79,3 +79,9 @@ def test_from_pretrained_falls_back_to_torch_dtype():
 
     assert from_pretrained_compat(Old, "x", dtype="bf16", token=None) == "model"
     assert calls[-1] == {"torch_dtype": "bf16", "token": None}
+
+
+def test_orm_rejects_pad_token_inside_sequence(tiny_rm):
+    # HF sequence-classification pooling locates the last token via pad_token_id
+    with pytest.raises(ValueError, match="pad"):
+        orm_score_ids(tiny_rm, [[5, 0, 7]], pad_id=0)

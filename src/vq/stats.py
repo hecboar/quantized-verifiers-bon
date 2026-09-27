@@ -20,6 +20,10 @@ def paired_bootstrap(
         raise ValueError("all per-question arrays must have the same length")
     n = lengths.pop()
     diff = np.asarray(contrast(per_question), dtype=float)
+    if n == 0 or diff.size == 0:
+        raise ValueError("empty contrast")
+    if not np.isfinite(diff).all():
+        raise ValueError("non-finite values in contrast")
     estimate = float(diff.mean())
     rng = np.random.default_rng(seed)
     idx = rng.integers(0, n, size=(n_boot, n))

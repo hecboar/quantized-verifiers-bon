@@ -16,11 +16,35 @@ from .stats import holm, paired_bootstrap
 from .store import CampaignStore
 
 
-def score_matrix(store: CampaignStore, generator: str, verifier: str, condition: str, split: str, score_col: str = "score"):
-    """Returns (scores [Q,C], correct [Q,C], answer keys [Q,C], question ids)."""
+def _check_alignment(cands, s, score_col: str, label: str) -> None:
+    """Scores must be unique, finite and question-complete: every scored
+    question has a score for every one of its candidates and nothing else."""
+    if s.duplicated(["question_id", "cand"]).any():
+        raise ValueError(f"{label}: duplicate score rows")
+    if not np.isfinite(s[score_col].to_numpy(float)).all():
+        raise ValueError(f"{label}: non-finite scores")
+    scored_q = set(s["question_id"])
+    expected = set(zip(cands.loc[cands["question_id"].isin(scored_q), "question_id"],
+                       cands.loc[cands["question_id"].isin(scored_q), "cand"]))
+    got = set(zip(s["question_id"], s["cand"]))
+    if expected != got:
+        raise ValueError(f"{label}: coverage mismatch ({len(expected - got)} candidates unscored, "
+                         f"{len(got - expected)} scores without a candidate)")
+
+
+def score_matrix(store: CampaignStore, generator: str, verifier: str, condition: str, split: str,
+                 score_col: str = "score", questions: list[str] | None = None):
+    """Returns (scores [Q,C], correct [Q,C], answer keys [Q,C], question ids).
+    `questions` restricts to a frozen subset (e.g. the gate manifest)."""
     cands = store.read("candidates", f"{generator}__{split}")
     s = store.read("scores", f"{generator}__{verifier}__{condition}")
     s = s[s["split"] == split]
+    if questions is not None:
+        missing = set(questions) - set(s["question_id"])
+        if missing:
+            raise ValueError(f"{len(missing)} requested questions were not scored under {condition}")
+        s = s[s["question_id"].isin(set(questions))]
+    _check_alignment(cands, s, score_col, f"{generator}__{verifier}__{condition}/{split}")
     df = cands.merge(s[["question_id", "cand", score_col]], on=["question_id", "cand"], how="inner")
     df = df.sort_values(["question_id", "cand"], kind="stable")
     qids = sorted(df["question_id"].unique())
@@ -39,10 +63,12 @@ def score_matrix(store: CampaignStore, generator: str, verifier: str, condition:
 def condition_metrics(
     store: CampaignStore, generator: str, verifier: str, condition: str,
     budgets=(1, 2, 4, 8, 16, 32), repeats: int = 200, seed: int = 7, split: str = "eval",
-    vote_temperature: float | None = 1.0, reference: str = "bf16",
+    vote_temperature: float | None = 1.0, reference: str = "bf16", questions: list[str] | None = None,
 ) -> dict:
-    ref, correct, keys, _ = score_matrix(store, generator, verifier, reference, split)
-    q, _, _, _ = score_matrix(store, generator, verifier, condition, split)
+    ref, correct, keys, qids_ref = score_matrix(store, generator, verifier, reference, split, questions=questions)
+    q, _, _, qids_q = score_matrix(store, generator, verifier, condition, split, questions=questions)
+    if qids_ref != qids_q:
+        raise ValueError(f"{condition} and {reference} cover different questions; refusing to pair")
     Q, C = ref.shape
     prio = tiebreak_priority(Q, C, seed + 1)
     out = {}

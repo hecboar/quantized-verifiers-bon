@@ -149,3 +149,27 @@ def test_missing_eval_pools_error_is_explicit(ctx):
     ctx.store.write("candidates", "G__dev", _candidates(prefix="d"))
     with pytest.raises(FileNotFoundError, match="G__eval"):
         execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)
+
+
+def test_dev_scored_uses_explicit_manifest_not_first_sorted(ctx):
+    ctx.dev_scored_ids = ["d11", "d3", "d7"]
+    run = ScoreRun("G", "tiny", "bf16", "none")
+    execute_run(run, ctx)
+    df = ctx.store.read("scores", run.name)
+    assert sorted(df.loc[df.split == "dev", "question_id"].unique()) == ["d11", "d3", "d7"]
+
+
+def test_nonfinite_scores_abort_the_run(ctx, monkeypatch):
+    import vq.runner as r
+
+    real = r.Scorer.score
+
+    def bad(self, qs, texts):
+        out = real(self, qs, texts)
+        out["score"][0] = float("nan")
+        return out
+
+    monkeypatch.setattr(r.Scorer, "score", bad)
+    with pytest.raises(ValueError, match="non-finite"):
+        execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)
+    assert not ctx.store.done("scores", "G__tiny__bf16")

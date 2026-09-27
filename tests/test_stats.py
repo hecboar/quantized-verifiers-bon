@@ -56,3 +56,13 @@ def test_tost_inconclusive_when_ci_too_wide():
     d = rng.normal(0.0, 1.0, size=50)
     res = tost_equivalence(d, margin=0.03, n_boot=2000, seed=0)
     assert res["equivalent"] is False
+
+
+def test_bootstrap_rejects_nonfinite():
+    with pytest.raises(ValueError):
+        paired_bootstrap({"a": np.array([0.1, np.nan])}, contrast=lambda d: d["a"], n_boot=10, seed=0)
+
+
+def test_bootstrap_rejects_empty():
+    with pytest.raises(ValueError):
+        paired_bootstrap({"a": np.array([])}, contrast=lambda d: d["a"], n_boot=10, seed=0)
