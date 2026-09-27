@@ -62,3 +62,20 @@ def test_aggregate_steps():
 
 def test_prm_step_token_constant():
     assert PRM_STEP_TOKEN == "<extra_0>"
+
+
+def test_from_pretrained_falls_back_to_torch_dtype():
+    from vq.verifiers import from_pretrained_compat
+
+    calls = []
+
+    class Old:
+        @classmethod
+        def from_pretrained(cls, name, **kw):
+            calls.append(kw)
+            if "dtype" in kw:
+                raise TypeError("__init__() got an unexpected keyword argument 'dtype'")
+            return "model"
+
+    assert from_pretrained_compat(Old, "x", dtype="bf16", token=None) == "model"
+    assert calls[-1] == {"torch_dtype": "bf16", "token": None}

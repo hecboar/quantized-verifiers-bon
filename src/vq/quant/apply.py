@@ -75,7 +75,10 @@ def _capture_layer0_inputs(model, layers, seqs):
     try:
         for ids in seqs:
             try:
-                model(input_ids=ids.to(device), use_cache=False)
+                try:
+                    model(input_ids=ids.to(device), use_cache=False)
+                except TypeError:  # custom-code models (e.g. PRMs) may reject use_cache
+                    model(input_ids=ids.to(device))
             except _Stop:
                 pass
     finally:

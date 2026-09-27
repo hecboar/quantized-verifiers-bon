@@ -115,6 +115,17 @@ def prm_score_ids(model, seqs: list[list[int]], sep_id: int, pad_id: int, max_to
 
 
 # ------------------------------------------------------------------ loading
+def from_pretrained_compat(cls, name, dtype=None, **kw):
+    """transformers >= 4.56 takes `dtype`; older versions (possibly pinned by
+    vLLM on the pod) take `torch_dtype`."""
+    try:
+        return cls.from_pretrained(name, dtype=dtype, **kw)
+    except TypeError as e:
+        if "dtype" not in str(e):
+            raise
+        return cls.from_pretrained(name, torch_dtype=dtype, **kw)
+
+
 @dataclass
 class VerifierSpec:
     name: str
@@ -137,7 +148,7 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
 
     token = os.environ.get("HF_TOKEN")
     tok = AutoTokenizer.from_pretrained(spec.hf_id, token=token, trust_remote_code=spec.kind == "prm")
-    kwargs = dict(dtype=dtype, token=token)
+    kwargs = dict(token=token)
     if device == "cuda":
         try:
             import flash_attn  # noqa: F401
@@ -146,9 +157,9 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
         except ImportError:
             kwargs["attn_implementation"] = "sdpa"
     if spec.kind == "orm":
-        model = AutoModelForSequenceClassification.from_pretrained(spec.hf_id, num_labels=1, **kwargs)
+        model = from_pretrained_compat(AutoModelForSequenceClassification, spec.hf_id, dtype=dtype, num_labels=1, **kwargs)
     else:
-        model = AutoModel.from_pretrained(spec.hf_id, trust_remote_code=True, **kwargs)
+        model = from_pretrained_compat(AutoModel, spec.hf_id, dtype=dtype, trust_remote_code=True, **kwargs)
     return tok, model.to(device).eval()
 
 

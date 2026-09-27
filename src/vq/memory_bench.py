@@ -37,6 +37,8 @@ def _peak_gb(model, tok, pad_id):
 def measure_config(spec, scheme: str, packed_dir: Path | None = None) -> dict:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, BitsAndBytesConfig
 
+    from .verifiers import from_pretrained_compat
+
     token = os.environ.get("HF_TOKEN")
     tok = AutoTokenizer.from_pretrained(spec.hf_id, token=token)
     pad = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
@@ -44,13 +46,13 @@ def measure_config(spec, scheme: str, packed_dir: Path | None = None) -> dict:
     torch.cuda.reset_peak_memory_stats()
     kw = dict(num_labels=1, token=token, device_map="cuda")
     if scheme == "bf16":
-        model = AutoModelForSequenceClassification.from_pretrained(spec.hf_id, dtype=torch.bfloat16, **kw)
+        model = from_pretrained_compat(AutoModelForSequenceClassification, spec.hf_id, dtype=torch.bfloat16, **kw)
     elif scheme == "nf4":
         q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16,
                                llm_int8_skip_modules=["score"])
         model = AutoModelForSequenceClassification.from_pretrained(spec.hf_id, quantization_config=q, **kw)
     elif scheme == "gptq-w4":
-        model = AutoModelForSequenceClassification.from_pretrained(str(packed_dir), dtype=torch.float16, **kw)
+        model = from_pretrained_compat(AutoModelForSequenceClassification, str(packed_dir), dtype=torch.float16, **kw)
     else:
         raise ValueError(scheme)
     model.eval()

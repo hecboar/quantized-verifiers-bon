@@ -92,3 +92,24 @@ def test_awq_runs(tiny_rm, calib_ids):
     ref = copy.deepcopy(tiny_rm.state_dict())
     quantize_model(tiny_rm, method="awq", bits=4, group_size=32, calib=CalibrationSet(calib_ids))
     assert len(audit_changes(ref, tiny_rm.state_dict())) == 14
+
+
+def test_calibration_capture_works_when_forward_rejects_use_cache(calib_ids):
+    """Custom-code PRMs may not accept `use_cache`; capture must still work."""
+    from conftest import make_tiny_rm
+
+    base = make_tiny_rm(seed=8)
+
+    class NoCacheKw(torch.nn.Module):
+        def __init__(self, inner):
+            super().__init__()
+            self.model = inner.model
+            self.score = inner.score
+            self._inner = inner
+
+        def forward(self, input_ids, attention_mask=None):
+            return self._inner(input_ids=input_ids, attention_mask=attention_mask)
+
+    wrapped = NoCacheKw(base)
+    stats = quantize_model(wrapped, method="gptq", bits=4, group_size=32, calib=CalibrationSet(calib_ids))
+    assert stats["method"] == "gptq"

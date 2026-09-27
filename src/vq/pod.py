@@ -94,15 +94,16 @@ def scp_argv(ep: tuple[str, int], src: str, dst: str, key: str, upload: bool) ->
     return ["scp", *_SSH_OPTS, "-i", key, "-P", str(ep[1]), "-r", a, b]
 
 
-def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspace/vq", grace_minutes: int = 60) -> str:
+def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspace/vq", grace_minutes: int = 60,
+                      extras: str = "gpu") -> str:
     """Runs one CLI step on the pod with a hard timeout and logs to disk.
     Afterwards the pod stays up for `grace_minutes` so `watch` can fetch the
     outputs over SSH (restarting a stopped pod can fail if its GPU was
     reassigned), then stops itself if nobody collected them."""
     return (
         f"cd {workdir} && "
-        f"(pip install -q -e '.[gpu]' > /workspace/pip.log 2>&1; "
-        f"timeout {int(max_hours)}h python -m vq.cli {cli_args} > /workspace/run.log 2>&1; "
+        f"(pip install -q -e '.[{extras}]' > /workspace/pip.log 2>&1; "
+        f"timeout {int(round(max_hours * 60))}m python -m vq.cli {cli_args} > /workspace/run.log 2>&1; "
         f"echo $? > /workspace/exit_code; "
         f"sleep {int(grace_minutes) * 60}; "
         f"runpodctl stop pod $RUNPOD_POD_ID)"

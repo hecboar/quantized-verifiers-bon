@@ -67,7 +67,7 @@ def cmd_launch(a):
         sys.exit(f"SSH key {pub} not found. Create one with: ssh-keygen -t ed25519 -f {KEY}")
     spec = PodSpec(name=f"vq-{a.step.split()[0]}", cloud_type=a.cloud,
                    env={"HF_TOKEN": env["HF_TOKEN"], "PUBLIC_KEY": pub.read_text().strip()})
-    cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE)
+    cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras)
     print(f"pod: {spec.gpu_type} ({spec.cloud_type}), image {spec.image}")
     print(f"step: python -m vq.cli {a.step}   (hard timeout {a.hours} h, self-stop at the end)")
     print(f"max cost at 0.69 EUR/h: {a.hours * 0.69:.2f} EUR")
@@ -161,6 +161,7 @@ def main():
     s.add_argument("--step", required=True, help='vq.cli arguments, e.g. "pilot --generator qwen2.5-1.5b"')
     s.add_argument("--hours", type=float, required=True)
     s.add_argument("--cloud", default="SECURE", choices=["SECURE", "COMMUNITY"])
+    s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
     s.add_argument("--yes", action="store_true")
     s.set_defaults(fn=cmd_launch)
     for name, fn in (("watch", cmd_watch), ("fetch", cmd_fetch), ("delete", cmd_delete)):
