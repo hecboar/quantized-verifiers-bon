@@ -1,0 +1,43 @@
+[project]
+name = "vq"
+version = "0.1.0"
+description = "Quantized verifiers for Best-of-N: experiments for the Neurocomputing paper"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "torch>=2.4",
+    "transformers>=4.51",
+    "datasets>=3.0",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "scipy>=1.13",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "math-verify>=0.7",
+    "requests>=2.31",
+    "accelerate>=1.0",
+]
+
+[project.optional-dependencies]
+gpu = ["vllm>=0.8", "bitsandbytes>=0.45", "flash-attn>=2.6"]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vq"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: needs internet / HF download", "slow: slow CPU test"]
+addopts = "-m 'not network and not slow'"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'win32'" }]
