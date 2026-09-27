@@ -20,9 +20,15 @@ class PodSpec:
     gpu_type: str = "NVIDIA GeForce RTX 4090"
     image: str = DEFAULT_IMAGE
     cloud_type: str = "SECURE"
-    container_disk_gb: int = 40
-    volume_gb: int = 80
+    container_disk_gb: int = 40  # OS + pip-installed packages (vLLM, torch)
+    # /workspace volume, deleted with the pod: every checkpoint of the study
+    # (~55 GB: 3 generators + 3 Skywork ORMs + PRM-7B) + packed exports
+    # (~8 GB) + outputs + pip cache. ~0.014 USD/h at 0.10 USD/GB/month.
+    volume_gb: int = 100
     env: dict = field(default_factory=dict, repr=False)
+
+    # caches on the volume, never on the 40 GB container disk
+    CACHE_ENV = {"HF_HOME": "/workspace/hf_cache", "PIP_CACHE_DIR": "/workspace/pip_cache"}
 
     def body(self) -> dict:
         return {
@@ -35,7 +41,7 @@ class PodSpec:
             "volumeInGb": self.volume_gb,
             "volumeMountPath": "/workspace",
             "ports": ["22/tcp"],
-            "env": dict(self.env),
+            "env": {**self.CACHE_ENV, **self.env},
         }
 
 

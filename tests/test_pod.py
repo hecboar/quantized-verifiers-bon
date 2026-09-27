@@ -156,3 +156,17 @@ def test_merge_outputs_never_overwrites_conflicts(tmp_path):
 def test_secrets_never_in_repr():
     spec = PodSpec(name="x", env={"HF_TOKEN": "hf_secret"})
     assert "hf_secret" not in repr(spec)
+
+
+def test_model_caches_live_on_the_sized_volume_not_container_disk():
+    body = PodSpec(name="x", env={"HF_TOKEN": "t"}).body()
+    # all experiment checkpoints ~55 GB + packed exports + outputs + pip cache must fit
+    assert body["volumeInGb"] >= 100 and body["volumeMountPath"] == "/workspace"
+    assert body["env"]["HF_HOME"].startswith("/workspace/")
+    assert body["env"]["PIP_CACHE_DIR"].startswith("/workspace/")
+    assert body["env"]["HF_TOKEN"] == "t"  # caller env preserved
+
+
+def test_caller_can_override_cache_location():
+    body = PodSpec(name="x", env={"HF_HOME": "/workspace/other"}).body()
+    assert body["env"]["HF_HOME"] == "/workspace/other"
