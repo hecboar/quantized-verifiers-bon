@@ -37,7 +37,8 @@ def test_create_pod_request_shape():
     method, url, headers, body = s.calls[0]
     assert method == "POST" and url == "https://rest.runpod.io/v1/pods"
     assert headers["Authorization"] == "Bearer KEY"
-    assert body["gpuTypeIds"] == ["NVIDIA GeForce RTX 4090"]
+    assert body["gpuTypeIds"] == ["NVIDIA RTX A6000"]  # one GPU type for the whole study
+    assert body["cloudType"] == "COMMUNITY"
     assert body["gpuCount"] == 1 and "22/tcp" in body["ports"]
     assert body["env"]["HF_TOKEN"] == "hf_x"
     assert pod["id"] == "pod123"
@@ -170,3 +171,18 @@ def test_model_caches_live_on_the_sized_volume_not_container_disk():
 def test_caller_can_override_cache_location():
     body = PodSpec(name="x", env={"HF_HOME": "/workspace/other"}).body()
     assert body["env"]["HF_HOME"] == "/workspace/other"
+
+
+def test_api_errors_include_server_message_but_never_the_key():
+    class ErrResp(FakeResp):
+        text = '{"error": "no instances available for NVIDIA GeForce RTX 4090"}'
+
+    class ErrSession(FakeSession):
+        def request(self, method, url, headers=None, json=None, timeout=None):
+            return ErrResp(500, {})
+
+    c = RunPodClient("SECRET-KEY", session=ErrSession())
+    with pytest.raises(RuntimeError) as e:
+        c.create_pod(PodSpec(name="x"))
+    assert "no instances available" in str(e.value) and "500" in str(e.value)
+    assert "SECRET-KEY" not in str(e.value)

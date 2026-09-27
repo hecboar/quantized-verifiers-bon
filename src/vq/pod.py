@@ -17,9 +17,11 @@ DEFAULT_IMAGE = "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
 @dataclass
 class PodSpec:
     name: str
-    gpu_type: str = "NVIDIA GeForce RTX 4090"
+    # one GPU type for every phase (throughput and numerics stay comparable).
+    # RTX 4090 had no stock on 2026-09-27; A6000 48 GB COMMUNITY at 0.33 USD/h
+    gpu_type: str = "NVIDIA RTX A6000"
     image: str = DEFAULT_IMAGE
-    cloud_type: str = "SECURE"
+    cloud_type: str = "COMMUNITY"
     container_disk_gb: int = 40  # OS + pip-installed packages (vLLM, torch)
     # /workspace volume, deleted with the pod: every checkpoint of the study
     # (~55 GB: 3 generators + 3 Skywork ORMs + PRM-7B) + packed exports
@@ -59,7 +61,9 @@ class RunPodClient:
     def _req(self, method: str, path: str, body: dict | None = None) -> dict:
         r = self.s.request(method, BASE + path, headers={"Authorization": f"Bearer {self._key}"},
                            json=body, timeout=self.timeout)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            body = getattr(r, "text", "")[:500]
+            raise RuntimeError(f"RunPod API {method} {path} -> HTTP {r.status_code}: {body}")
         try:
             return r.json()
         except ValueError:

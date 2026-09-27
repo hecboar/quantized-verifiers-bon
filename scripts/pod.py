@@ -34,7 +34,7 @@ from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, 
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
-EUR_PER_HOUR = 0.69
+EUR_PER_HOUR = 0.33  # A6000 COMMUNITY 0.33 USD/h + 100 GB volume + FX margin
 
 
 def _env():
@@ -107,7 +107,8 @@ def cmd_launch(a):
         _run(ssh_argv(ep, remote_detached(cmd), str(KEY)))
 
     pid = launch_pod(client, spec, setup)  # deletes the pod if anything in setup fails
-    print(f"running pod {pid}. Next: python scripts/pod.py watch --pod {pid}")
+    price = client.get_pod(pid).get("costPerHr")
+    print(f"running pod {pid} at {price} USD/h. Next: python scripts/pod.py watch --pod {pid}")
 
 
 def _fetch(client, pid):
@@ -189,7 +190,7 @@ def main():
     s.add_argument("--step", required=True, help='vq.cli arguments, e.g. "pilot --generator qwen2.5-1.5b"')
     s.add_argument("--hours", type=float, required=True, help="hard cap for install + run")
     s.add_argument("--grace", type=int, default=60, help="minutes the pod waits for `watch` before self-stopping")
-    s.add_argument("--cloud", default="SECURE", choices=["SECURE", "COMMUNITY"])
+    s.add_argument("--cloud", default="COMMUNITY", choices=["SECURE", "COMMUNITY"])
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
     s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")
     s.add_argument("--yes", action="store_true")
