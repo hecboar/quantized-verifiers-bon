@@ -47,9 +47,9 @@ class PodSpec:
             # host requirements (first real launches: a COMMUNITY host without a
             # public IP never exposed SSH; defaults would give 8 GB RAM per GPU)
             "supportPublicIp": True,
-            "minRAMPerGPU": 32,
+            "minRAMPerGPU": 24,
             "minVCPUPerGPU": 4,
-            "minDownloadMbps": 500,
+            "minDownloadMbps": 200,
             "env": {**self.CACHE_ENV, **self.env},
         }
 

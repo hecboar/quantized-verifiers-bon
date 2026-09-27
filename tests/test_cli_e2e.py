@@ -117,3 +117,37 @@ def test_pilot_command_end_to_end_on_cpu(env, monkeypatch, capsys):
     tp = json.loads((cli.OUT / "throughput.json").read_text())
     assert set(tp["score"]) == {"sky-1.7b", "sky-4b", "sky-8b", "prm-7b"}
     assert tp["quant_hours"]["gptq"] > 0
+
+
+def test_pilot_saves_and_prints_errors_when_a_verifier_fails(env, monkeypatch, capsys):
+    """Second real pilot: a failing sky-1.7b made cmd_pilot crash (KeyError) before
+    writing the report, hiding the actual error."""
+    import subprocess
+
+    import vq.verifiers
+    from conftest import make_tiny_prm
+    from test_pilot import fake_generate
+    from test_runner import FakeTok
+
+    store, ev, pools = env
+    items = cli._items()
+
+    def fake_run(argv, check=True):
+        n = int(argv[argv.index("--limit") + 1])
+        store.write("raw_candidates", f"G__gate-pilot{n}", fake_generate([items[i] for i in cli._manifest("gate")[:n]]))
+        return subprocess.CompletedProcess(argv, 0)
+
+    def loader(spec, device="cpu", dtype=None):
+        if spec.name == "sky-1.7b":
+            raise RuntimeError("CUDA error: something specific")
+        return (FakeTok(), make_tiny_prm(seed=2)) if spec.kind == "prm" else fake_loader(spec, device, dtype)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(vq.verifiers, "load_verifier", loader)
+    monkeypatch.setattr(cli, "_generic_texts", lambda: ["generic calibration text " * 400] * 20)
+    with pytest.raises(SystemExit):
+        cli.main(["pilot", "--generator", "G", "--questions", "4", "--device", "cpu", "--chunk-tokens", "16"])
+    out = capsys.readouterr().out
+    assert "PILOT FAILED" in out and "CUDA error: something specific" in out
+    rep = json.loads((cli.OUT / "pilot_G.json").read_text())
+    assert "sky-1.7b" in rep["errors"]

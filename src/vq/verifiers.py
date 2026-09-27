@@ -162,6 +162,8 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
     tok = AutoTokenizer.from_pretrained(spec.hf_id, token=token, trust_remote_code=spec.kind == "prm")
     kwargs = dict(token=token)
     if device == "cuda":
+        # load straight onto the GPU: keeps the host-RAM peak low (24 GB hosts)
+        kwargs["device_map"] = "cuda"
         try:
             import flash_attn  # noqa: F401
 

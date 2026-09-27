@@ -299,16 +299,24 @@ def cmd_pilot(args) -> None:
         quant_verifier="sky-1.7b", n_calib=16, device=args.device,
         generic_chunk=lambda tok, n: generic_chunks(tok, texts, args.chunk_tokens, n),
     )
-    # GPTQ time for the grid: 128 calibration sequences, scaled from 1.7B to ~8B parameters
-    per_seq = rep["quant_check"]["sky-1.7b"]["per_calib_seq_seconds"]
-    rep["quant_hours"] = {"gptq": per_seq * 128 * 4.7 / 3600, "awq": per_seq * 128 * 3 / 3600,
-                          "nf4": 0.02, "rtn": 0.02, "none": 0.0}
     rep["generator"] = args.generator
+    qc = rep["quant_check"].get("sky-1.7b")
+    if qc:  # GPTQ time for the grid: 128 calibration sequences, scaled from 1.7B to ~8B parameters
+        per_seq = qc["per_calib_seq_seconds"]
+        rep["quant_hours"] = {"gptq": per_seq * 128 * 4.7 / 3600, "awq": per_seq * 128 * 3 / 3600,
+                              "nf4": 0.02, "rtn": 0.02, "none": 0.0}
     OUT.mkdir(exist_ok=True)
+    # the report is always saved and printed, errors included (never lose the diagnosis)
     (OUT / f"pilot_{args.generator}.json").write_text(json.dumps(rep, indent=1))
-    (OUT / "throughput.json").write_text(json.dumps(rep, indent=1))
     print(json.dumps(rep, indent=1))
-    print("PILOT OK" if rep["ok"] else "PILOT FAILED: do not launch further phases")
+    if rep["ok"]:
+        (OUT / "throughput.json").write_text(json.dumps(rep, indent=1))  # only a clean pilot feeds `plan`
+        print("PILOT OK")
+    else:
+        print("PILOT FAILED: do not launch further phases")
+        for v, err in rep["errors"].items():
+            print(f"  {v}: {err}")
+        sys.exit(1)
 
 
 # --------------------------------------------------------- memory (C2)

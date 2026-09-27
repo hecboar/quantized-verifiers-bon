@@ -272,8 +272,10 @@ def test_remote_archive_command_tolerates_missing_outputs():
 def test_host_requirements_for_this_study():
     body = PodSpec(name="x").body()
     assert body["supportPublicIp"] is True  # COMMUNITY hosts may have no public IP -> no SSH
-    assert body["minRAMPerGPU"] >= 32        # 8B / PRM-7B pass through CPU RAM while loading (~16 GB BF16)
-    assert body["minDownloadMbps"] >= 500    # ~42 GB of verifiers per phase must not take an hour
+    # 8B / PRM-7B need ~16 GB while loading; 32 GB excluded the 31 GB RTX 4090 hosts
+    # that were actually available (seen in the RunPod UI on 2026-09-28)
+    assert 24 <= body["minRAMPerGPU"] <= 30
+    assert body["minDownloadMbps"] >= 200    # ~42 GB in <30 min without excluding the available hosts
     assert body["minVCPUPerGPU"] >= 4
 
 
