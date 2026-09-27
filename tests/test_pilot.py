@@ -26,3 +26,26 @@ def test_pilot_report_has_every_phase0_check():
     assert rep["quant_check"]["a"]["audit_ok"] is True
     assert all(rep["rtn_runs"][v] == "ok" for v in specs)
     assert rep["ok"] is True
+
+
+def test_previous_model_is_freed_before_next_load():
+    """on a 24 GB GPU the 8B must be gone before the PRM-7B loads."""
+    import gc
+    import weakref
+
+    items = {f"q{i}": Item(f"q{i}", f"question {i}?", str(i % 7), "numeric", "gsm8k-train") for i in range(4)}
+    specs = {"a": VerifierSpec("a", "none", "orm"), "b": VerifierSpec("b", "none", "orm"),
+             "c": VerifierSpec("c", "none", "orm")}
+    alive = []
+
+    def tracking_loader(spec, device="cpu", dtype=None):
+        gc.collect()
+        leaked = [r for r in alive if r() is not None]
+        assert not leaked, f"{len(leaked)} earlier model(s) still referenced when loading {spec.name}"
+        tok, model = fake_loader(spec, device, dtype)
+        alive.append(weakref.ref(model))
+        return tok, model
+
+    rep = run_pilot(items, list(items), fake_generate, tracking_loader, specs, quant_verifier="b", n_calib=4,
+                    device="cpu", generic_chunk=lambda tok, n: [[5 + i] * 12 for i in range(n)])
+    assert rep["ok"] is True

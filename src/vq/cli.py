@@ -251,7 +251,6 @@ def cmd_select_lambda(args) -> None:
 # ------------------------------------------------------------------ pilot
 def cmd_pilot(args) -> None:
     """Phase 0: throughput + integrity checks on a handful of dev questions."""
-    from .generate import GENERATORS, generate_pool
     from .pilot import run_pilot
     from .runner import generic_chunks
     from .verifiers import VERIFIERS, load_verifier
@@ -260,8 +259,18 @@ def cmd_pilot(args) -> None:
     ids = _manifest("gate")[: args.questions]
     texts = _generic_texts()
     specs = {k: VERIFIERS[k] for k in ("sky-1.7b", "sky-4b", "sky-8b", "prm-7b")}
+    def generate_in_subprocess(its):
+        # vLLM keeps ~90% of VRAM reserved until its process exits: generate in a
+        # child process so the verifiers can be loaded afterwards
+        import subprocess
+
+        name = f"{args.generator}__gate-pilot{args.questions}"
+        subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--generator", args.generator,
+                        "--split", "gate", "--limit", str(args.questions)], check=True)
+        return _store().read("raw_candidates", name)
+
     rep = run_pilot(
-        items, ids, lambda its: generate_pool(GENERATORS[args.generator], its), load_verifier, specs,
+        items, ids, generate_in_subprocess, load_verifier, specs,
         quant_verifier="sky-1.7b", n_calib=16, device="cuda",
         generic_chunk=lambda tok, n: generic_chunks(tok, texts, 512, n),
     )
