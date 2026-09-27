@@ -100,6 +100,8 @@ def cmd_launch(a):
     pid = launch_pod(client, spec, setup, wait_s=1500)  # deletes the pod if anything in setup fails
     price = client.get_pod(pid).get("costPerHr")
     print(f"running pod {pid} at {price} USD/h. Next: python scripts/pod.py watch --pod {pid}")
+    if a.watch:  # no unattended gap between launch and watch
+        cmd_watch(argparse.Namespace(pod=pid, every=180))
 
 
 def _fetch(client, pid):
@@ -205,6 +207,7 @@ def main():
     s.add_argument("--cloud", default="COMMUNITY", choices=["SECURE", "COMMUNITY"])
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
     s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")
+    s.add_argument("--watch", action="store_true", help="after launching, watch until done, fetch and delete")
     s.add_argument("--yes", action="store_true")
     s.set_defaults(fn=cmd_launch)
     for name, fn in (("watch", cmd_watch), ("fetch", cmd_fetch), ("delete", cmd_delete)):
