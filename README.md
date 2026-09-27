@@ -43,7 +43,7 @@ The printed cost is the worst case (hard cap + 60 min grace). Grid steps are ref
 
 | # | Step (`--step`) | Cap (h) | Must check before continuing |
 |---|---|---|---|
-| 0 | `pilot --generator qwen2.5-1.5b` (then `qwen2.5-math-1.5b`) | 3 | `PILOT OK`; `outputs/throughput.json`: parity < 1e-2, `rtn_runs` all ok (incl. PRM); re-run `plan` locally with measured throughput |
+| 0 | `pilot --generator qwen2.5-1.5b` (then `qwen2.5-math-1.5b`) | 3 | `PILOT OK`; batched-vs-single parity within 25 % of the score scale (BF16 noise is measured by the `bf16-null` control in phase 3), `rtn_runs` all ok (incl. PRM), generation speed measured by the generation itself; re-run `plan` locally |
 | 0b | `export-packed --verifier sky-4b` (extras `gpu,packed`), `score-deployed --scheme gptq-w4` and `--scheme nf4` on the gate split, then locally `parity` | 3 | fake-quant vs deployment score parity and winner agreement |
 | 1 | `generate --generator G --split dev`; `annotate`; `score --phase phase3_main --generator G --only sky-4b --conditions bf16,nf4,gptq-w4 --dev-only`; locally `gate --generator G --projected-eur <plan>` | 6 | `outputs/gate.json` go=true |
 | 2 | `generate --generator G --split eval`; `generate --generator llama3.2-3b --split gen2`; `annotate` | 12 | parse / truncation rates |

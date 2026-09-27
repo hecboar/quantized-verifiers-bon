@@ -164,8 +164,10 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
 
     spec = ctx.verifier_specs[run.verifier]
     tok, model = ctx.loader(spec, device=ctx.device, dtype=ctx.dtype)
-    scorer = Scorer(spec, tok, model, max_tokens=ctx.max_tokens)
-    meta: dict = {"run": run.__dict__, "name": name, "torch": torch.__version__, "fingerprint": fp, "mode": mode}
+    batch_tokens = run.batch_tokens or ctx.max_tokens
+    scorer = Scorer(spec, tok, model, max_tokens=batch_tokens)
+    meta: dict = {"run": run.__dict__, "name": name, "torch": torch.__version__, "fingerprint": fp, "mode": mode,
+                  "batch_tokens": batch_tokens}
     try:
         import transformers
 

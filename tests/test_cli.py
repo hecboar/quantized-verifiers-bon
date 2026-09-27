@@ -44,7 +44,7 @@ def test_prepare_data_refuses_to_overwrite_manifests(tmp_path):
 def test_plan_command_lists_runs(capsys):
     main(["plan", "--config", str(CFG), "--generator", "qwen2.5-1.5b"])
     out = capsys.readouterr().out
-    assert "phase3_main: 16 runs" in out
+    assert "phase3_main: 20 runs" in out  # 16 + 4 BF16 null controls
     assert "phase5_ch: 20 runs" in out
     assert "EUR" in out
 

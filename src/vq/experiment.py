@@ -21,6 +21,7 @@ class ScoreRun:
     seed: int = 0
     lam: str | float | None = None
     calib_generator: str | None = None  # dev pools used for calibration (default: generator)
+    batch_tokens: int | None = None  # scoring batch budget override (BF16 null control)
 
     @property
     def calib_gen(self) -> str:
@@ -41,7 +42,7 @@ def _from_condition(cfg, generator, verifier, condition) -> ScoreRun:
     c = cfg["conditions"][condition]
     return ScoreRun(
         generator, verifier, condition, c["method"], c.get("bits"), c.get("group_size"),
-        c.get("calib"), 0, None,
+        c.get("calib"), 0, None, batch_tokens=c.get("batch_tokens"),
     )
 
 

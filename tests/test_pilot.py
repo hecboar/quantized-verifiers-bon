@@ -66,3 +66,11 @@ def test_one_failing_verifier_does_not_abort_the_pilot():
     assert set(rep["score"]) == {"a", "c"}
     assert "No space left" in rep["errors"]["broken"]
     assert rep["ok"] is False
+
+
+def test_parity_is_judged_relative_to_score_scale():
+    from vq.pilot import parity_ok
+
+    assert parity_ok(max_abs_diff=0.25, score_scale=4.0) is True    # BF16 noise, measured by the null control
+    assert parity_ok(max_abs_diff=3.0, score_scale=4.0) is False    # gross bug (e.g. wrong pooled token)
+    assert parity_ok(max_abs_diff=0.0, score_scale=0.0) is True

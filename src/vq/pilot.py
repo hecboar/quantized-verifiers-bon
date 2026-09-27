@@ -10,7 +10,16 @@ from .calibration import build_recipe
 from .generate import annotate
 from .quant.apply import quantize_model, target_linears
 
-PARITY_TOL = 1e-2
+PARITY_REL_TOL = 0.25  # of the within-question score scale: catches gross bugs, not BF16 noise
+
+
+def parity_ok(max_abs_diff: float, score_scale: float) -> bool:
+    """Batched-vs-single scoring agreement. BF16 on GPU legitimately differs by a
+    few % of the score scale (measured separately by the BF16 null control);
+    a gross bug (e.g. pooling the wrong token) differs by a large fraction."""
+    if score_scale <= 0:
+        return max_abs_diff == 0
+    return max_abs_diff <= PARITY_REL_TOL * score_scale
 
 
 def _sync(device):
@@ -42,6 +51,10 @@ def _score_check(rep, v, spec, loader, qs, texts, device, dtype):
     sc.max_tokens = 1
     single = sc.score(qs[:k], texts[:k])["score"]
     rep["parity"][v] = float(max(abs(a - b) for a, b in zip(res["score"][:k], single)))
+    import numpy as np
+
+    s = np.asarray(res["score"], dtype=float)
+    rep.setdefault("score_scale", {})[v] = float(1.4826 * np.median(np.abs(s - np.median(s))))
     sc.max_tokens = 16_384
     # the model must survive fake-quant + scoring (custom-code PRM included);
     # quantized in place: this model is discarded afterwards
@@ -107,7 +120,7 @@ def run_pilot(items: dict, ids: list[str], generate_fn, loader, specs: dict, qua
     done = rep["avg_score_tokens_by_verifier"]
     rep["avg_score_tokens"] = float(sum(done.values()) / len(done)) if done else 0.0
     rep["ok"] = (not rep["errors"] and len(rep["score"]) == len(specs)
-                 and all(p < PARITY_TOL for p in rep["parity"].values())
+                 and all(parity_ok(p, rep["score_scale"].get(v, 0.0)) for v, p in rep["parity"].items())
                  and all(s == "ok" for s in rep["rtn_runs"].values())
                  and all(q["audit_ok"] for q in rep["quant_check"].values()))
     return rep

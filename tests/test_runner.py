@@ -199,3 +199,20 @@ def test_merge_rejects_unexpected_extra_shards(ctx):
     ctx.store.write_shard("scores", run.name, 99, ctx.store.read("candidates", "G__eval").head(1))
     with pytest.raises(RuntimeError, match="shard"):
         execute_run(run, ctx)
+
+
+def test_null_control_rescores_bf16_with_a_different_batch_layout(ctx, monkeypatch):
+    import vq.runner as r
+
+    seen = []
+    real = r.Scorer.__init__
+
+    def spy(self, spec, tok, model, max_tokens=16_384, max_len=4096):
+        seen.append(max_tokens)
+        real(self, spec, tok, model, max_tokens=max_tokens, max_len=max_len)
+
+    monkeypatch.setattr(r.Scorer, "__init__", spy)
+    execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)
+    execute_run(ScoreRun("G", "tiny", "bf16-null", "none", batch_tokens=40), ctx)
+    assert seen[0] == ctx.max_tokens and seen[-1] == 40
+    assert ctx.store.meta("scores", "G__tiny__bf16-null")["batch_tokens"] == 40
