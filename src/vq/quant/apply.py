@@ -28,6 +28,7 @@ class CalibrationSet:
     sequences: list[torch.Tensor]
     pairs: list[tuple[int, int]] = field(default_factory=list)
     awq_max_rows: int = 4096
+    meta: dict = field(default_factory=dict)
 
 
 class _Stop(Exception):
