@@ -47,36 +47,37 @@ def select_vote(
     """Majority (temperature=None) or softmax(score/T)-weighted vote over answer keys.
 
     Unparseable answers (key -1) do not vote. The returned candidate is the
-    best-scored member of the winning answer cluster. If no candidate in the
-    subset is parseable, falls back to Best-of-N.
+    best-scored (score, then priority) member of the winning answer cluster;
+    ties between clusters go to the cluster holding that best member. If no
+    candidate in the subset is parseable, falls back to Best-of-N.
+    Vectorised; tests/vote_reference.py holds the loop specification.
     """
     Q, R, N = subsets.shape
-    out = np.empty((Q, R), dtype=np.int64)
-    bon = select_bon(scores, subsets, priority)
-    for q in range(Q):
-        for r in range(R):
-            idx = subsets[q, r]
-            k = keys[q, idx]
-            valid = k >= 0
-            if not valid.any():
-                out[q, r] = bon[q, r]
-                continue
-            idx, k = idx[valid], k[valid]
-            s = scores[q, idx]
-            if temperature is None:
-                w = np.ones_like(s)
-            else:
-                z = (s - s.max()) / temperature
-                w = np.exp(z)
-            clusters = np.unique(k)
-            totals = np.array([w[k == c].sum() for c in clusters])
-            # tie between clusters: the one containing the best (score, priority) member
-            top = np.flatnonzero(np.isclose(totals, totals.max()))
-            cand_best = []
-            for t in top:
-                members = idx[k == clusters[t]]
-                m = members[np.lexsort((priority[q, members], scores[q, members]))[-1]]
-                cand_best.append(m)
-            cand_best = np.array(cand_best)
-            out[q, r] = cand_best[np.lexsort((priority[q, cand_best], scores[q, cand_best]))[-1]]
+    K = int(keys.max()) + 1
+    out = select_bon(scores, subsets, priority)
+    if K <= 0:
+        return out
+    chunk = max(1, int(4e7 // max(1, R * N * K)))
+    for q0 in range(0, Q, chunk):
+        q1 = min(Q, q0 + chunk)
+        qi = np.arange(q0, q1)[:, None, None]
+        idx = subsets[q0:q1]
+        s, p, k = scores[qi, idx], priority[qi, idx], keys[qi, idx]
+        valid = k >= 0
+        if temperature is None:
+            w = valid.astype(float)
+        else:
+            smax = np.where(valid, s, -np.inf).max(axis=-1, keepdims=True)
+            w = np.where(valid, np.exp((s - np.where(np.isfinite(smax), smax, 0.0)) / temperature), 0.0)
+        onehot = k[..., None] == np.arange(K)  # [q, R, N, K]
+        tot = (w[..., None] * onehot).sum(axis=2)  # [q, R, K]
+        present = onehot.any(axis=2)
+        top = present & np.isclose(tot, tot.max(axis=-1, keepdims=True))
+        eligible = valid & np.take_along_axis(top, np.where(valid, k, 0), axis=-1)
+        s_el = np.where(eligible, s, -np.inf)
+        best = s_el.max(axis=-1, keepdims=True)
+        pos = np.where(eligible & (s_el == best), p, -np.inf).argmax(axis=-1)
+        win = np.take_along_axis(idx, pos[..., None], axis=-1)[..., 0]
+        any_valid = valid.any(axis=-1)
+        out[q0:q1] = np.where(any_valid, win, out[q0:q1])
     return out

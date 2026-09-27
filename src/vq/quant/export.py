@@ -36,3 +36,37 @@ def unpack_int4_cols(packed: torch.Tensor) -> torch.Tensor:
     shifts = (torch.arange(8, dtype=torch.int64) * 4).view(1, 8, 1)
     q = (p.unsqueeze(1) >> shifts) & 0xF
     return q.reshape(-1, packed.shape[1]).to(torch.int32)
+
+
+def export_gptq_checkpoint(model, params: dict, outdir, bits: int = 4, group_size: int = 128) -> None:
+    """Write a GPTQ (checkpoint_format="gptq", v1: qzeros store zero-1)
+    safetensors checkpoint from a fake-quantized model and its per-linear
+    (scales, zeros). Non-target tensors are kept as-is."""
+    import json
+    from pathlib import Path
+
+    from safetensors.torch import save_file
+
+    from .apply import target_linears
+
+    if bits != 4:
+        raise NotImplementedError("only int4 packing is supported")
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    sd = {k: v.detach().cpu().contiguous() for k, v in model.state_dict().items()}
+    for name, lin in target_linears(model):
+        scales, zeros = params[name]  # [out, groups]
+        w = lin.weight.detach().float().cpu()
+        codes = codes_from_params(w, scales, zeros, group_size)  # [out, in]
+        del sd[f"{name}.weight"]
+        sd[f"{name}.qweight"] = pack_int4_cols(codes.T.contiguous())
+        sd[f"{name}.qzeros"] = pack_int4_cols((zeros.round().to(torch.int32) - 1)).T.contiguous()
+        sd[f"{name}.scales"] = scales.T.contiguous().half()
+        sd[f"{name}.g_idx"] = (torch.arange(w.shape[1]) // group_size).to(torch.int32)
+    save_file(sd, str(outdir / "model.safetensors"))
+    cfg = model.config.to_dict()
+    cfg["quantization_config"] = {
+        "quant_method": "gptq", "bits": bits, "group_size": group_size, "desc_act": False,
+        "sym": True, "checkpoint_format": "gptq",
+    }
+    (outdir / "config.json").write_text(json.dumps(cfg, indent=1, default=str))

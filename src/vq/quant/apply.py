@@ -97,19 +97,32 @@ def quantize_model(
     calib: CalibrationSet | None = None,
     lam: float = 0.0,
     damp: float = 0.01,
+    keep_params: bool = False,
 ) -> dict:
+    """keep_params=True returns per-linear (scales, zeros) for packed export
+    (rtn / gptq only)."""
     if method not in METHODS:
         raise ValueError(f"unknown method {method!r}")
     if method in CALIBRATED and calib is None:
         raise ValueError(f"{method} requires a CalibrationSet")
 
+    params: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
     if method in ("rtn", "nf4"):
-        for _, lin in target_linears(model):
+        for name, lin in target_linears(model):
             w = lin.weight.data
-            q = quantize_rtn(w, bits, group_size) if method == "rtn" else quantize_nf4(w)
+            if method == "rtn":
+                q, sc, zr = quantize_rtn(w, bits, group_size, return_params=True)
+                if keep_params:
+                    params[name] = (sc.cpu(), zr.cpu())
+            else:
+                q = quantize_nf4(w)
             _set_weight(lin, q)
-        return {"method": method, "n_linears": len(target_linears(model))}
+        out = {"method": method, "n_linears": len(target_linears(model))}
+        if keep_params:
+            out["params"] = params
+        return out
 
+    full_names = {id(m): n for n, m in target_linears(model)}
     layers = decoder_layers(model)
     inputs = _capture_layer0_inputs(model, layers, calib.sequences)
     diff_rows: dict[str, int] = {}
@@ -146,7 +159,9 @@ def quantize_model(
                 elif calib.pairs:
                     diff_rows[f"{li}.{name}"] = len(calib.pairs)
                 H = acc[name].finalize(lam=lam)
-                q = gptq_quantize(lin.weight.data, H, bits, group_size, damp=damp)
+                q, sc, zr = gptq_quantize(lin.weight.data, H, bits, group_size, damp=damp, return_params=True)
+                if keep_params:
+                    params[full_names[id(lin)]] = (sc.cpu(), zr.cpu())
             else:  # awq
                 X = torch.cat(rows[name])
                 if X.shape[0] > calib.awq_max_rows:
@@ -165,9 +180,12 @@ def quantize_model(
                 new_inputs.append(((), {**kwargs, "hidden_states": hs}))
         inputs = new_inputs
 
-    return {
+    out = {
         "method": method,
         "n_pairs": len(calib.pairs),
         "lam": lam,
         "diff_rows_per_linear": diff_rows,
     }
+    if keep_params:
+        out["params"] = params
+    return out

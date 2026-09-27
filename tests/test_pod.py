@@ -66,10 +66,11 @@ def test_ssh_and_scp_argv():
 
 
 def test_bootstrap_self_stops_and_has_timeout():
-    cmd = bootstrap_command("run-phase --phase phase3_main --generator qwen2.5-1.5b", max_hours=40)
+    cmd = bootstrap_command("run-phase --phase phase3_main --generator qwen2.5-1.5b", max_hours=40, grace_minutes=60)
     assert "timeout 40h" in cmd
-    assert "runpodctl stop pod $RUNPOD_POD_ID" in cmd
     assert "pip install" in cmd and "python -m vq.cli run-phase" in cmd
+    # results stay fetchable for a grace period, then the pod stops itself
+    assert cmd.index("exit_code") < cmd.index("sleep 3600") < cmd.index("runpodctl stop pod $RUNPOD_POD_ID")
 
 
 def test_secrets_never_in_repr():

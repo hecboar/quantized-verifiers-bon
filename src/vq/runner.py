@@ -35,6 +35,8 @@ class RunContext:
     dev_scored: int = 100
     shard_size: int = 2000
     generic_ids: list[list[int]] | None = None
+    generic_texts: list[str] | None = None  # tokenised per verifier (preferred)
+    generic_chunk_tokens: int = 512
     frozen_lambda: dict[str, float] = field(default_factory=dict)
     max_tokens: int = 16_384
     dtype: torch.dtype = torch.bfloat16
@@ -42,6 +44,28 @@ class RunContext:
 
 def dev_full_name(generator: str, verifier: str) -> str:
     return f"{generator}__{verifier}__dev-full-bf16"
+
+
+def generic_chunks(tokenizer, texts: list[str], chunk_tokens: int, n: int) -> list[list[int]]:
+    """Concatenate generic texts and cut `n` chunks of exactly `chunk_tokens`."""
+    ids: list[int] = []
+    for t in texts:
+        ids += tokenizer(t, add_special_tokens=False)["input_ids"] if _accepts_kw(tokenizer) else tokenizer(t)["input_ids"]
+        if len(ids) >= chunk_tokens * n:
+            break
+    chunks = [ids[i : i + chunk_tokens] for i in range(0, len(ids) - chunk_tokens + 1, chunk_tokens)]
+    if len(chunks) < n:
+        raise ValueError(f"generic texts yield {len(chunks)} chunks, need {n}")
+    return chunks[:n]
+
+
+def _accepts_kw(tokenizer) -> bool:
+    import inspect
+
+    try:
+        return "add_special_tokens" in inspect.signature(tokenizer.__call__).parameters
+    except (TypeError, ValueError):
+        return True
 
 
 def _fingerprints(model) -> dict[str, tuple[float, float]]:
@@ -104,7 +128,11 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
         calib = None
         if run.method in ("gptq", "awq"):
             if run.recipe == "generic":
-                calib = build_recipe("generic", None, ctx.n_calib, run.seed, generic_texts_ids=ctx.generic_ids)
+                gids = ctx.generic_ids
+                if gids is None:
+                    # extra chunks so the seeded choice of n_calib is non-trivial
+                    gids = generic_chunks(tok, ctx.generic_texts, ctx.generic_chunk_tokens, 2 * ctx.n_calib)
+                calib = build_recipe("generic", None, ctx.n_calib, run.seed, generic_texts_ids=gids)
             else:
                 calib = build_recipe(run.recipe, _pool_from_dev(ctx, run, scorer), ctx.n_calib, run.seed)
             meta["calibration"] = {k: v for k, v in calib.meta.items() if k in ("recipe", "n_tokens", "n_boundary", "n_anchor")}

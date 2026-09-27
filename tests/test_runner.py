@@ -82,6 +82,20 @@ def test_generic_calibration_run(ctx):
     assert ctx.store.meta("scores", run.name)["calibration"]["recipe"] == "generic"
 
 
+def test_generic_texts_tokenised_with_verifier_tokenizer(ctx):
+    from vq.runner import generic_chunks
+
+    # FakeTok caps each text at 48 tokens -> 3 texts = 144 tokens = 7 chunks of 20
+    ids = generic_chunks(FakeTok(), ["x" * 500, "y" * 500, "z" * 500], chunk_tokens=20, n=5)
+    assert len(ids) == 5 and all(len(c) == 20 for c in ids)
+    ctx.generic_ids = None
+    ctx.generic_texts = ["hello world " * 50] * 40
+    ctx.generic_chunk_tokens = 16
+    run = ScoreRun("G", "tiny", "gptq-w4", "gptq", 4, 32, "generic", 0, None)
+    execute_run(run, ctx)
+    assert ctx.store.meta("scores", run.name)["calibration"]["n_sequences"] == 8
+
+
 def test_skip_when_done(ctx):
     run = ScoreRun("G", "tiny", "bf16", "none")
     execute_run(run, ctx)

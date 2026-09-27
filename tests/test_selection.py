@@ -136,3 +136,18 @@ def test_robust_scale_is_mad_based():
     x = np.array([[0.0, 1.0, 2.0, 3.0, 100.0]])
     s = robust_scale(x)
     assert 0.5 < s < 3.0  # outlier does not blow up the scale
+
+
+def test_vectorised_vote_matches_reference_implementation():
+    from vote_reference import select_vote_reference
+
+    rng = np.random.default_rng(42)
+    Q, C = 40, 16
+    scores = np.round(rng.normal(size=(Q, C)), 1)  # rounding creates exact ties
+    keys = rng.integers(-1, 5, size=(Q, C))
+    keys[0] = -1  # a question with no parseable answer
+    subsets = draw_subsets(Q, C, 8, 25, seed=3)
+    prio = tiebreak_priority(Q, C, seed=4)
+    for T in (None, 1.0, 0.3):
+        np.testing.assert_array_equal(select_vote(scores, keys, subsets, prio, T),
+                                      select_vote_reference(scores, keys, subsets, prio, T))
