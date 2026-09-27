@@ -398,3 +398,46 @@ def test_pod_env_script_exports_the_needed_variables():
     for var in ("HF_HOME", "HF_TOKEN", "PIP_CACHE_DIR", "RUNPOD_POD_ID", "RUNPOD_API_KEY"):
         assert var in text
     assert subprocess.run(["bash", "-n"], input=text.encode()).returncode == 0  # stdin: no Windows path issues
+
+
+def _git(repo, *args):
+    import subprocess
+
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+
+def test_bundle_ships_committed_lf_content_not_working_copy(tmp_path):
+    """Working copies on Windows carry CRLF; a CRLF shell script breaks on the pod."""
+    import tarfile
+
+    from vq.pod import bundle_code
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / ".gitattributes").write_text("* text=auto eol=lf\n")
+    (repo / "run.sh").write_bytes(b"export A=1\r\necho ok\r\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "x")
+    out = bundle_code(repo, tmp_path / "b.tar.gz", extras=[])
+    with tarfile.open(out) as t:
+        data = t.extractfile("run.sh").read()
+    assert b"\r" not in data and data == b"export A=1\necho ok\n"
+
+
+def test_bundle_refuses_uncommitted_changes(tmp_path):
+    from vq.pod import bundle_code
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("x = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "x")
+    (repo / "a.py").write_text("x = 2\n")
+    with pytest.raises(RuntimeError, match="uncommitted"):
+        bundle_code(repo, tmp_path / "b.tar.gz", extras=[])

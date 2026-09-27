@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
                     finish_pod, launch_pod, merge_outputs, remote_archive_command, remote_detached, requires_gate,
-                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur, parse_probe)
+                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur, parse_probe, bundle_code)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
@@ -48,19 +48,9 @@ def _env():
 
 
 def _bundle() -> Path:
-    """Code (tracked files) + data manifests + current outputs (for resumable phases)."""
-    out = ROOT / "outputs" / "_bundle.tar.gz"
-    out.parent.mkdir(exist_ok=True)
-    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-    with tarfile.open(out, "w:gz") as tar:
-        for f in tracked:
-            if f != ".env":
-                tar.add(ROOT / f, arcname=f)
-        for extra in ("data", "outputs/store", "outputs/frozen_lambda.json", "outputs/throughput.json", "outputs/packed"):
-            p = ROOT / extra
-            if p.exists():
-                tar.add(p, arcname=extra)
-    return out
+    """Committed code (git archive, LF) + data manifests + current outputs."""
+    extras = ["data", "outputs/store", "outputs/frozen_lambda.json", "outputs/throughput.json", "outputs/packed"]
+    return bundle_code(ROOT, ROOT / "outputs" / "_bundle.tar.gz", extras)
 
 
 def _run(argv):

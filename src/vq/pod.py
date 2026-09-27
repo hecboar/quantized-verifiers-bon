@@ -251,6 +251,36 @@ def parse_probe(raw: bytes | None) -> tuple[bool, list[str]]:
     return (bool(lines) and lines[0].strip().isdigit()), lines
 
 
+def bundle_code(repo, out, extras: list[str]) -> "Path":
+    """Tarball for the pod: tracked files exactly as committed (git archive:
+    normalised LF, no uncommitted edits; the pod runs the committed code) plus
+    untracked data/output paths listed in `extras`. Refuses a dirty tree."""
+    import subprocess
+    import tarfile
+    from pathlib import Path
+
+    repo, out = Path(repo), Path(out)
+    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo,
+                           capture_output=True, text=True, check=True).stdout.strip()
+    if dirty:
+        raise RuntimeError("uncommitted changes, commit before launching: " + dirty.replace("\n", "; "))
+    import io
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    archive = subprocess.run(["git", "archive", "--format=tar", "HEAD"], cwd=repo, check=True,
+                             capture_output=True).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive)) as src, tarfile.open(out, "w:gz") as dst:
+        for m in src.getmembers():
+            if m.type in (tarfile.XGLTYPE, tarfile.XHDTYPE):  # pax headers: metadata only
+                continue
+            dst.addfile(m, src.extractfile(m) if m.isfile() else None)
+        for extra in extras:
+            p = repo / extra
+            if p.exists():
+                dst.add(p, arcname=extra)
+    return out
+
+
 def finish_pod(client: RunPodClient, pod_id: str, fetch):
     """Fetch outputs, then delete the pod no matter what happened while
     fetching (in the first real pilot a failed fetch left the pod billing)."""
