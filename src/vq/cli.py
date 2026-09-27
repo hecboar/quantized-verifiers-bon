@@ -92,6 +92,30 @@ def plan_campaigns(cfg: dict, generator: str, tp: dict):
     gen_tokens = (n_eval + sum(d["dev"].values())) * C * tp["avg_gen_tokens"]
     gen_tokens += d["gen2_subset"] * C * tp["avg_gen_tokens"]
     out["phase2_generation"] = ([], [Campaign("generation", gen_tokens, "generate")])
+
+    # prerequisites and validation steps that the grid alone does not show
+    tok = tp["avg_score_tokens"]
+    dev_full = sum(d["dev"].values()) * C
+    devsub = d["dev_scored_per_condition"] * C
+    quant = lambda v, m="gptq": int(tp["quant_hours"][m] * 3600 * tp["score"][v])
+    hours = lambda name, h: Campaign(name, int(h * 3600), "hours")
+    verifiers = cfg["verifiers"]
+    out["phase0_pilot"] = ([], [hours("pilot", 1.0)])
+    out["prereq_dev_full_bf16"] = ([], [Campaign(f"dev-full-bf16:{v}", dev_full * tok, f"score:{v}") for v in verifiers])
+    out["phase1_gate"] = ([], [Campaign(f"gate:{c}", dev_full * tok + (quant("sky-4b") if c == "gptq-w4" else 0),
+                                        "score:sky-4b") for c in ("nf4", "gptq-w4")])
+    out["lambda_selection"] = ([], [Campaign("devsub-bf16", devsub * tok, "score:sky-4b")] + [
+        Campaign(f"lamsel-{lam}", devsub * tok + quant("sky-4b"), "score:sky-4b")
+        for lam in cfg["calibration"]["lambda_grid"]])
+    orms = [v for v in verifiers if v.startswith("sky-")]
+    dep = [Campaign(f"nf4-bnb:{v}", seqs_run * tok, f"score:{v}") for v in orms]
+    dep += [Campaign(f"gptq-w4-packed:{v}", seqs_run * tok, f"score:{v}") for v in ("sky-4b", "sky-8b")]
+    dep += [Campaign(f"export-packed:{v}", quant(v), f"score:{v}") for v in ("sky-4b", "sky-8b")]
+    dep += [hours("measure-memory", 0.5)]
+    out["phase6_deployment"] = ([], dep)
+    # each pod launch: dependency install (~15 min) + upload/fetch (~6 min)
+    n_launches = 12
+    out["pod_overhead"] = ([], [hours(f"launch-{i}", 0.35) for i in range(n_launches)])
     return out
 
 
@@ -107,16 +131,16 @@ def cmd_plan(args) -> None:
         print(f"using measured throughput from {tp_file}")
     else:
         print("using PLANNING ASSUMPTIONS (run `pilot` on GPU to measure)")
-    rates = {"generate": tp["generate"], **{f"score:{v}": r for v, r in tp["score"].items()}}
+    rates = {"generate": tp["generate"], "hours": 1.0, **{f"score:{v}": r for v, r in tp["score"].items()}}
     b = cfg["budget"]
     total = 0.0
     for ph, (runs, camps) in plan_campaigns(cfg, args.generator, tp).items():
-        f = forecast(camps, rates, b["eur_per_hour"], b["overhead_frac"])
+        f = forecast(camps, rates, b["eur_per_hour"], 0.0 if ph in ("pod_overhead", "phase0_pilot") else b["overhead_frac"])
         total += f["eur"]
-        n = f"{len(runs)} runs" if runs else "generation"
+        n = f"{len(runs)} runs" if runs else f"{len(camps)} steps"
         print(f"{ph}: {n}, {f['hours']:.1f} h, {f['eur']:.1f} EUR")
     flag = "OVER CEILING" if total > b["submission_ceiling_eur"] else "within ceiling"
-    print(f"TOTAL (phases 2-5): {total:.1f} EUR vs submission ceiling {b['submission_ceiling_eur']} EUR -> {flag}")
+    print(f"TOTAL (all paid steps): {total:.1f} EUR vs submission ceiling {b['submission_ceiling_eur']} EUR -> {flag}")
 
 
 # ---------------------------------------------------------------- helpers
@@ -318,16 +342,14 @@ def cmd_score_deployed(args) -> None:
 
     from .experiment import ScoreRun
     from .runner import execute_run
-    from .verifiers import VERIFIERS, load_verifier_deployed
+    from .verifiers import load_verifier_deployed
 
     ctx = _context(args)
-    spec = VERIFIERS[args.verifier]
     pdir = str(OUT / "packed" / f"{args.verifier}__gptq-w4")
     cond = {"nf4": "nf4-bnb", "gptq-w4": "gptq-w4-packed"}[args.scheme]
     ctx.dtype = torch.bfloat16 if args.scheme == "nf4" else torch.float16
     ctx.loader = lambda sp, device="cuda", dtype=None: load_verifier_deployed(sp, args.scheme, device, dtype, pdir)
     print(execute_run(ScoreRun(args.generator, args.verifier, cond, "none"), ctx))
-    del spec
 
 
 def cmd_parity(args) -> None:
