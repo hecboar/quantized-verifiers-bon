@@ -63,6 +63,8 @@ def _pod_record(pid: str) -> Path:
 
 
 def cmd_launch(a):
+    if a.yes:
+        _keep_awake()  # from pod creation on: no sleep before the self-stop is armed
     env = _env()
     pub = KEY.with_suffix(".pub")
     if not pub.exists():
