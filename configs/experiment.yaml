@@ -76,7 +76,7 @@ phases:
       - {verifier: sky-4b, condition: rtn-w8}
 
 budget:
-  eur_per_hour: 0.33          # RTX A6000 48 GB COMMUNITY (0.33 USD/h) + volume + FX margin
+  eur_per_hour: 0.34          # RTX 4090 COMMUNITY (0.34 USD/h) + volume + FX margin
   submission_ceiling_eur: 71
   reserve_eur: 29
   overhead_frac: 0.15

@@ -17,9 +17,10 @@ DEFAULT_IMAGE = "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
 @dataclass
 class PodSpec:
     name: str
-    # one GPU type for every phase (throughput and numerics stay comparable).
-    # RTX 4090 had no stock on 2026-09-27; A6000 48 GB COMMUNITY at 0.33 USD/h
-    gpu_type: str = "NVIDIA RTX A6000"
+    # one GPU type for every phase (throughput and numerics stay comparable):
+    # RTX 4090 COMMUNITY, 0.34 USD/h on 2026-09-27; stock fluctuates, so
+    # creation retries while no instance is available
+    gpu_type: str = "NVIDIA GeForce RTX 4090"
     image: str = DEFAULT_IMAGE
     cloud_type: str = "COMMUNITY"
     container_disk_gb: int = 40  # OS + pip-installed packages (vLLM, torch)
@@ -134,13 +135,37 @@ def billed_hours_cap(max_hours: float, grace_minutes: int = 60) -> float:
     return max_hours + grace_minutes / 60 + INSTALL_FETCH_HOURS
 
 
-def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, poll_s: int = 10) -> str:
+NO_STOCK = "no instances currently available"
+
+
+def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int = 600, max_wait_s: int = 6 * 3600,
+                              sleep=None) -> dict:
+    """Retry creation only while RunPod reports no free instance of this GPU
+    (costs nothing while waiting); any other API error is raised at once."""
+    import time
+
+    sleep = sleep or time.sleep
+    waited = 0
+    while True:
+        try:
+            return client.create_pod(spec)
+        except RuntimeError as e:
+            if NO_STOCK not in str(e) or waited >= max_wait_s:
+                raise
+            print(f"no {spec.gpu_type} available ({spec.cloud_type}); retrying in {retry_s}s "
+                  f"(waited {waited // 60} of {max_wait_s // 60} min)", flush=True)
+            sleep(retry_s)
+            waited += max(retry_s, 1)
+
+
+def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, poll_s: int = 10,
+               retry_s: int = 600, max_stock_wait_s: int = 6 * 3600) -> str:
     """Create a pod and run `setup(pod_id, ssh_endpoint)` (upload + start the
     step). Any failure before the step is running deletes the pod, so no GPU
     is left billing without a self-stopping job."""
     import time
 
-    pod = client.create_pod(spec)
+    pod = create_pod_when_available(client, spec, retry_s=retry_s, max_wait_s=max_stock_wait_s)
     pid = pod["id"]
     try:
         ep, waited = None, 0

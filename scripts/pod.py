@@ -34,7 +34,7 @@ from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, 
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
-EUR_PER_HOUR = 0.33  # A6000 COMMUNITY 0.33 USD/h + 100 GB volume + FX margin
+EUR_PER_HOUR = 0.34  # RTX 4090 COMMUNITY 0.34 USD/h + 100 GB volume + FX margin
 
 
 def _env():

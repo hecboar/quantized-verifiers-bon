@@ -37,7 +37,7 @@ def test_create_pod_request_shape():
     method, url, headers, body = s.calls[0]
     assert method == "POST" and url == "https://rest.runpod.io/v1/pods"
     assert headers["Authorization"] == "Bearer KEY"
-    assert body["gpuTypeIds"] == ["NVIDIA RTX A6000"]  # one GPU type for the whole study
+    assert body["gpuTypeIds"] == ["NVIDIA GeForce RTX 4090"]  # one GPU type for the whole study
     assert body["cloudType"] == "COMMUNITY"
     assert body["gpuCount"] == 1 and "22/tcp" in body["ports"]
     assert body["env"]["HF_TOKEN"] == "hf_x"
@@ -186,3 +186,51 @@ def test_api_errors_include_server_message_but_never_the_key():
         c.create_pod(PodSpec(name="x"))
     assert "no instances available" in str(e.value) and "500" in str(e.value)
     assert "SECRET-KEY" not in str(e.value)
+
+
+class FlakyStockSession(FakeSession):
+    """POST /pods fails with 'no instances' `fails` times, then succeeds."""
+
+    def __init__(self, fails):
+        super().__init__()
+        self.fails = fails
+
+    def request(self, method, url, headers=None, json=None, timeout=None):
+        if method == "POST" and url.endswith("/pods") and self.fails > 0:
+            self.fails -= 1
+            self.calls.append((method, url, headers, json))
+            r = FakeResp(500, {})
+            r.text = '{"error":"create pod: There are no instances currently available","status":500}'
+            return r
+        return super().request(method, url, headers, json, timeout)
+
+
+def test_create_retries_while_no_stock_then_succeeds():
+    from vq.pod import create_pod_when_available
+
+    s = FlakyStockSession(fails=2)
+    pod = create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="x"), retry_s=0, max_wait_s=60)
+    assert pod["id"] == "pod123"
+    assert sum(1 for m, u, *_ in s.calls if m == "POST" and u.endswith("/pods")) == 3
+
+
+def test_create_gives_up_after_max_wait():
+    from vq.pod import create_pod_when_available
+
+    s = FlakyStockSession(fails=10**6)
+    with pytest.raises(RuntimeError, match="no instances"):
+        create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="x"), retry_s=1, max_wait_s=2,
+                                  sleep=lambda t: None)
+
+
+def test_other_api_errors_are_not_retried():
+    from vq.pod import create_pod_when_available
+
+    class Bad(FakeSession):
+        def request(self, method, url, headers=None, json=None, timeout=None):
+            r = FakeResp(400, {})
+            r.text = '{"error":"invalid gpuTypeIds"}'
+            return r
+
+    with pytest.raises(RuntimeError, match="invalid gpuTypeIds"):
+        create_pod_when_available(RunPodClient("K", session=Bad()), PodSpec(name="x"), retry_s=0, max_wait_s=60)
