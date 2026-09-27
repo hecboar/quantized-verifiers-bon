@@ -65,13 +65,92 @@ def test_ssh_and_scp_argv():
     assert b[0] == "scp" and "-P" in b and b[-1] == "root@1.2.3.4:/workspace/"
 
 
-def test_bootstrap_self_stops_and_has_timeout():
-    cmd = bootstrap_command("run-phase --phase phase3_main --generator qwen2.5-1.5b", max_hours=40, grace_minutes=60)
-    assert "timeout 2400m" in cmd
-    assert "timeout 150m" in bootstrap_command("x", max_hours=2.5)  # no truncation to 2 h
-    assert "pip install" in cmd and "python -m vq.cli run-phase" in cmd
-    # results stay fetchable for a grace period, then the pod stops itself
+def test_bootstrap_bounds_everything_including_install():
+    cmd = bootstrap_command("score --phase phase3_main --generator G", max_hours=2.5, grace_minutes=60)
+    # one hard cap (with forced kill) around install + run
+    assert "timeout -k 120 150m bash -c" in cmd
+    assert cmd.index("timeout -k 120 150m") < cmd.index("pip install") < cmd.index("python -m vq.cli score")
+    # failed install stops immediately with its own exit code (no python run)
+    assert "|| { echo 97 > /workspace/exit_code; exit 97; }" in cmd
+    # outputs stay fetchable for the grace period, then the pod stops itself
     assert cmd.index("exit_code") < cmd.index("sleep 3600") < cmd.index("runpodctl stop pod $RUNPOD_POD_ID")
+
+
+def test_bootstrap_rejects_quotes_in_step():
+    with pytest.raises(ValueError):
+        bootstrap_command("score --x 'y'", max_hours=1)
+
+
+def test_billed_hours_include_install_and_grace():
+    from vq.pod import billed_hours_cap
+
+    assert billed_hours_cap(max_hours=3, grace_minutes=60) == pytest.approx(3 + 1 + 5 / 60)
+
+
+def test_launch_deletes_pod_if_setup_fails():
+    from vq.pod import launch_pod
+
+    s = FakeSession()
+    c = RunPodClient("KEY", session=s)
+
+    def setup(pod_id, ep):
+        raise RuntimeError("scp failed")
+
+    with pytest.raises(RuntimeError):
+        launch_pod(c, PodSpec(name="x"), setup, wait_s=0, poll_s=0)
+    assert ("DELETE", "https://rest.runpod.io/v1/pods/pod123") in [(m, u) for m, u, _, _ in s.calls]
+
+
+def test_launch_keeps_pod_when_setup_succeeds():
+    from vq.pod import launch_pod
+
+    s = FakeSession()
+    pid = launch_pod(RunPodClient("KEY", session=s), PodSpec(name="x"), lambda pod_id, ep: None, wait_s=0, poll_s=0)
+    assert pid == "pod123" and not any(m == "DELETE" for m, *_ in s.calls)
+
+
+@pytest.mark.parametrize("step,needs", [
+    ("pilot --generator G", False),
+    ("generate --generator G --split dev", False),
+    ("score --phase phase3_main --generator G --only sky-4b --dev-only", False),
+    ("select-lambda --generator G", False),
+    ("export-packed --verifier sky-4b", False),
+    ("generate --generator G --split eval", True),
+    ("score --phase phase3_main --generator G", True),
+    ("score --phase phase5_ch --generator G", True),
+])
+def test_gate_required_for_paid_grid_steps(step, needs):
+    from vq.pod import requires_gate
+
+    assert requires_gate(step) is needs
+
+
+def test_gate_check(tmp_path):
+    from vq.pod import gate_allows
+
+    assert gate_allows(tmp_path / "gate.json") is False
+    (tmp_path / "gate.json").write_text('{"go": false}')
+    assert gate_allows(tmp_path / "gate.json") is False
+    (tmp_path / "gate.json").write_text('{"go": true}')
+    assert gate_allows(tmp_path / "gate.json") is True
+
+
+def test_merge_outputs_never_overwrites_conflicts(tmp_path):
+    from vq.pod import merge_outputs
+
+    src, dst = tmp_path / "pod", tmp_path / "local"
+    (src / "store" / "scores").mkdir(parents=True)
+    (dst / "store" / "scores").mkdir(parents=True)
+    (src / "store" / "scores" / "new.parquet").write_bytes(b"new")
+    (src / "store" / "scores" / "same.parquet").write_bytes(b"same")
+    (dst / "store" / "scores" / "same.parquet").write_bytes(b"same")
+    (src / "frozen_lambda.json").write_text('{"sky-4b": 0.5}')
+    (dst / "frozen_lambda.json").write_text('{"sky-4b": 2.0}')
+    rep = merge_outputs(src, dst)
+    assert (dst / "store" / "scores" / "new.parquet").read_bytes() == b"new"
+    assert rep["copied"] == ["store/scores/new.parquet"] and rep["identical"] == ["store/scores/same.parquet"]
+    assert rep["conflicts"] == ["frozen_lambda.json"]
+    assert (dst / "frozen_lambda.json").read_text() == '{"sky-4b": 2.0}'  # local freeze kept
 
 
 def test_secrets_never_in_repr():

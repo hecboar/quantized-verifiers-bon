@@ -94,20 +94,112 @@ def scp_argv(ep: tuple[str, int], src: str, dst: str, key: str, upload: bool) ->
     return ["scp", *_SSH_OPTS, "-i", key, "-P", str(ep[1]), "-r", a, b]
 
 
+INSTALL_FETCH_HOURS = 5 / 60  # upload, fetch and delete after the grace period
+
+
 def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspace/vq", grace_minutes: int = 60,
                       extras: str = "gpu") -> str:
-    """Runs one CLI step on the pod with a hard timeout and logs to disk.
-    Afterwards the pod stays up for `grace_minutes` so `watch` can fetch the
-    outputs over SSH (restarting a stopped pod can fail if its GPU was
-    reassigned), then stops itself if nobody collected them."""
+    """One CLI step on the pod. A single hard cap (with forced kill) bounds
+    install + run; a failed install stops immediately (exit 97). Afterwards the
+    pod stays up `grace_minutes` so `watch` can fetch outputs over SSH
+    (restarting a stopped pod can fail if its GPU was reassigned), then stops
+    itself. The controller (`watch`) also enforces a deadline."""
+    if "'" in cli_args:
+        raise ValueError("step arguments must not contain single quotes")
+    minutes = int(round(max_hours * 60))
+    inner = (f"pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
+             f"|| {{ echo 97 > /workspace/exit_code; exit 97; }}; "
+             f"python -m vq.cli {cli_args} > /workspace/run.log 2>&1; echo $? > /workspace/exit_code")
     return (
         f"cd {workdir} && "
-        f"(pip install -q -e '.[{extras}]' > /workspace/pip.log 2>&1; "
-        f"timeout {int(round(max_hours * 60))}m python -m vq.cli {cli_args} > /workspace/run.log 2>&1; "
-        f"echo $? > /workspace/exit_code; "
+        f"(timeout -k 120 {minutes}m bash -c '{inner}'; "
+        f"[ -f /workspace/exit_code ] || echo 124 > /workspace/exit_code; "
         f"sleep {int(grace_minutes) * 60}; "
         f"runpodctl stop pod $RUNPOD_POD_ID)"
     )
+
+
+def billed_hours_cap(max_hours: float, grace_minutes: int = 60) -> float:
+    """Worst-case billed time of one launch (cap + grace + transfer)."""
+    return max_hours + grace_minutes / 60 + INSTALL_FETCH_HOURS
+
+
+def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, poll_s: int = 10) -> str:
+    """Create a pod and run `setup(pod_id, ssh_endpoint)` (upload + start the
+    step). Any failure before the step is running deletes the pod, so no GPU
+    is left billing without a self-stopping job."""
+    import time
+
+    pod = client.create_pod(spec)
+    pid = pod["id"]
+    try:
+        ep, waited = None, 0
+        while True:
+            ep = ssh_endpoint(client.get_pod(pid))
+            if ep or waited >= wait_s:
+                break
+            time.sleep(poll_s)
+            waited += max(poll_s, 1)
+        if not ep:
+            raise RuntimeError("SSH never became available")
+        setup(pid, ep)
+    except BaseException:
+        client.delete_pod(pid)
+        raise
+    return pid
+
+
+# steps allowed before the phase-1 gate has passed (cheap / validation only)
+_PRE_GATE = ("pilot", "gate", "annotate", "select-lambda", "export-packed", "parity", "plan", "prepare-data")
+
+
+def requires_gate(step: str) -> bool:
+    parts = step.split()
+    cmd = parts[0]
+    if cmd in _PRE_GATE:
+        return False
+    if cmd == "generate":
+        return "--split" in parts and parts[parts.index("--split") + 1] not in ("dev", "gate")
+    if cmd == "score":
+        return "--dev-only" not in parts
+    return True
+
+
+def gate_allows(gate_file) -> bool:
+    import json
+    from pathlib import Path
+
+    p = Path(gate_file)
+    if not p.exists():
+        return False
+    try:
+        return bool(json.loads(p.read_text()).get("go"))
+    except ValueError:
+        return False
+
+
+def merge_outputs(src_root, dst_root) -> dict:
+    """Merge a pod's outputs into the local tree: copy new files, skip
+    identical ones, and never overwrite a differing local file (conflicts are
+    reported; frozen settings such as frozen_lambda.json are never replaced)."""
+    import filecmp
+    import shutil
+    from pathlib import Path
+
+    src_root, dst_root = Path(src_root), Path(dst_root)
+    rep = {"copied": [], "identical": [], "conflicts": []}
+    for f in sorted(p for p in src_root.rglob("*") if p.is_file()):
+        rel = f.relative_to(src_root).as_posix()
+        dst = dst_root / rel
+        if not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, dst)
+            rep["copied"].append(rel)
+        elif filecmp.cmp(f, dst, shallow=False):
+            rep["identical"].append(rel)
+        else:
+            rep["conflicts"].append(rel)
+    return rep
 
 
 def remote_detached(cmd: str) -> str:

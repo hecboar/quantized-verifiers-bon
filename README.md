@@ -34,21 +34,27 @@ python -m vq.cli plan       # campaigns and cost forecast
 
 `.env` must define `HF_TOKEN` and `RUNPOD_API_KEY` (never committed).
 
-## RunPod runbook (each step: `scripts/pod.py launch --step "<args>" --hours H --yes`, then `watch --pod <id>`)
+## RunPod runbook
 
-| # | Step (`--step`) | Hours cap | Must check before continuing |
+Each step: `python scripts/pod.py launch --step "<vq.cli args>" --hours H --yes`, then
+`python scripts/pod.py watch --pod <id>` (fetches, merges without overwriting, deletes the pod).
+The printed cost is the worst case (hard cap + 60 min grace). Grid steps are refused until
+`outputs/gate.json` says `go`.
+
+| # | Step (`--step`) | Cap (h) | Must check before continuing |
 |---|---|---|---|
-| 0 | `pilot --generator qwen2.5-1.5b` (and `qwen2.5-math-1.5b`) | 3 | `outputs/throughput.json`: batch/single parity < 1e-2 for every verifier; truncation < 2 %; re-run `plan` with measured throughput |
-| 0b | `export-packed --verifier sky-4b` then `score-packed` on the gate split | 2 | packed vs fake-quant score parity (GPTQ kernel compatibility) |
-| 1 | `generate --generator G --split dev`, `annotate`, `score --phase phase3_main --only sky-4b` (dev) then `gate` | 6 | gate criteria (`gate --projected-eur ...`) |
-| 2 | `generate --generator G --split eval`; `generate --generator llama3.2-3b --split gen2` | 12 | parse / truncation rates |
-| 3 | `score --phase phase3_main --generator G` | 36 | audit in every run's JSON (`head_or_embed_changed: false`) |
-| 5a | `select-lambda --generator G --verifier sky-4b` | 3 | `outputs/frozen_lambda.json` written |
-| 5 | `score --phase phase5_ch --generator G` | 30 | all 20 runs done |
-| 4 | `score --phase phase4_gen2` | 6 | — |
-| 6 | `export-packed` + `score-packed` (frontier configs) + `measure-memory` | 6 | `outputs/memory.json` |
+| 0 | `pilot --generator qwen2.5-1.5b` (then `qwen2.5-math-1.5b`) | 3 | `PILOT OK`; `outputs/throughput.json`: parity < 1e-2, `rtn_runs` all ok (incl. PRM); re-run `plan` locally with measured throughput |
+| 0b | `export-packed --verifier sky-4b` (extras `gpu,packed`), `score-deployed --scheme gptq-w4` and `--scheme nf4` on the gate split, then locally `parity` | 3 | fake-quant vs deployment score parity and winner agreement |
+| 1 | `generate --generator G --split dev`; `annotate`; `score --phase phase3_main --generator G --only sky-4b --conditions bf16,nf4,gptq-w4 --dev-only`; locally `gate --generator G --projected-eur <plan>` | 6 | `outputs/gate.json` go=true |
+| 2 | `generate --generator G --split eval`; `generate --generator llama3.2-3b --split gen2`; `annotate` | 12 | parse / truncation rates |
+| 5a | `select-lambda --generator G --verifier sky-4b` | 3 | `outputs/frozen_lambda.json` |
+| 3 | `score --phase phase3_main --generator G` | 36 | every run JSON: `audit.head_or_embed_changed: false` |
+| 5 | `score --phase phase5_ch --generator G` | 30 | 20 runs done |
+| 4 | `score --phase phase4_gen2 --generator G` | 6 | transfer runs use `calib_generator = G` |
+| 6 | `export-packed` (4B, 8B); `score-deployed --scheme gptq-w4` (4B, 8B) and `--scheme nf4` (1.7B/4B/8B); `measure-memory` | 8 | `outputs/memory.json`; `parity` reports |
 
-Then locally: `python -m vq.cli analyze --generator G` → `outputs/tables/`.
+Then locally: `python -m vq.cli analyze --generator G` -> `outputs/tables/`.
 
-Rules: never edit manifests or `configs/experiment.yaml` after phase 1 without
-logging the change; never cut evaluation questions, seeds or controls silently.
+Rules: never edit manifests or `configs/experiment.yaml` after phase 1 without logging the change;
+never cut evaluation questions, seeds or controls silently. Runs are fingerprinted: resuming or
+reusing a run after changing its inputs or settings fails on purpose.

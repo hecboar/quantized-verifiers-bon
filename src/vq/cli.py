@@ -383,7 +383,12 @@ def cmd_gate(args) -> None:
         acc_bf16_32=float(m[n]["acc_ref"].mean()), acc_random_32=float(m[n]["random"].mean()),
         mixed_frac=mixed_fraction(correct), projected_eur=args.projected_eur, implementation_ok=args.implementation_ok,
     )
+    res.update(generator=args.generator, verifier=args.verifier, questions=len(gate_q))
+    OUT.mkdir(exist_ok=True)
+    (OUT / "gate.json").write_text(json.dumps(res, indent=1))  # scripts/pod.py requires go=true for grid steps
     print(json.dumps(res, indent=1))
+    if not res["go"]:
+        sys.exit(1)
 
 
 def cmd_analyze(args) -> None:

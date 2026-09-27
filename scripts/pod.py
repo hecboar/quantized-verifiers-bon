@@ -3,17 +3,23 @@
   python scripts/pod.py launch --step "pilot --generator qwen2.5-1.5b" --hours 3          # dry run
   python scripts/pod.py launch --step "pilot --generator qwen2.5-1.5b" --hours 3 --yes    # real, costs money
   python scripts/pod.py watch  --pod <id>     # waits for the step, downloads outputs, deletes the pod
-  python scripts/pod.py fetch  --pod <id>     # download outputs/ and logs without deleting
+  python scripts/pod.py fetch  --pod <id>     # download + merge outputs/ and logs without deleting
   python scripts/pod.py delete --pod <id>
   python scripts/pod.py list
 
-Safety: dry run by default; the pod stops itself when the step ends (or at
-the --hours hard timeout); secrets travel only as pod env vars.
+Safety:
+- dry run by default; the printed cost is the worst case (hard cap + grace);
+- one hard cap bounds install + run; a failed install stops at once;
+- any failure between pod creation and the running step deletes the pod;
+- grid steps are refused unless outputs/gate.json says go (or --force);
+- `watch` enforces the deadline from this side too;
+- fetched outputs are merged without ever overwriting a differing local file;
+- secrets travel only as pod env vars.
 """
 from __future__ import annotations
 
 import argparse
-import os
+import json
 import subprocess
 import sys
 import tarfile
@@ -23,10 +29,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from vq.pod import PodSpec, RunPodClient, bootstrap_command, remote_detached, scp_argv, ssh_argv, ssh_endpoint  # noqa: E402
+from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
+                    launch_pod, merge_outputs, remote_detached, requires_gate, scp_argv, ssh_argv, ssh_endpoint)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
+EUR_PER_HOUR = 0.69
 
 
 def _env():
@@ -56,8 +64,12 @@ def _bundle() -> Path:
 
 
 def _run(argv):
-    print("$", " ".join(a if "@" not in a else a for a in argv[:6]), "...", flush=True)
+    print("$", " ".join(argv[:6]), "...", flush=True)
     return subprocess.run(argv, check=True)
+
+
+def _pod_record(pid: str) -> Path:
+    return ROOT / "outputs" / "pods" / f"{pid}.json"
 
 
 def cmd_launch(a):
@@ -65,35 +77,37 @@ def cmd_launch(a):
     pub = KEY.with_suffix(".pub")
     if not pub.exists():
         sys.exit(f"SSH key {pub} not found. Create one with: ssh-keygen -t ed25519 -f {KEY}")
+    if requires_gate(a.step) and not gate_allows(ROOT / "outputs" / "gate.json") and not a.force:
+        sys.exit("refusing: this step spends grid budget and outputs/gate.json does not say go "
+                 "(run the phase-1 gate first, or pass --force deliberately)")
     spec = PodSpec(name=f"vq-{a.step.split()[0]}", cloud_type=a.cloud,
                    env={"HF_TOKEN": env["HF_TOKEN"], "PUBLIC_KEY": pub.read_text().strip()})
-    cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras)
+    cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras, grace_minutes=a.grace)
+    cap = billed_hours_cap(a.hours, a.grace)
     print(f"pod: {spec.gpu_type} ({spec.cloud_type}), image {spec.image}")
-    print(f"step: python -m vq.cli {a.step}   (hard timeout {a.hours} h, self-stop at the end)")
-    print(f"max cost at 0.69 EUR/h: {a.hours * 0.69:.2f} EUR")
+    print(f"step: python -m vq.cli {a.step}")
+    print(f"hard cap {a.hours} h (install + run) + grace {a.grace} min -> worst case {cap:.2f} h "
+          f"= {cap * EUR_PER_HOUR:.2f} EUR at {EUR_PER_HOUR} EUR/h")
     if not a.yes:
         print("DRY RUN: add --yes to create the pod.")
         return
     client = RunPodClient(env["RUNPOD_API_KEY"])
-    pod = client.create_pod(spec)
-    pid = pod["id"]
-    print(f"created pod {pid}; waiting for SSH ...", flush=True)
-    ep = None
-    for _ in range(90):
-        ep = ssh_endpoint(client.get_pod(pid))
-        if ep:
-            break
-        time.sleep(10)
-    if not ep:
-        client.delete_pod(pid)
-        sys.exit("SSH never became available; pod deleted.")
-    time.sleep(20)  # sshd start-up
-    bundle = _bundle()
-    _run(ssh_argv(ep, f"mkdir -p {REMOTE}", str(KEY)))
-    _run(scp_argv(ep, str(bundle), f"{REMOTE}/bundle.tar.gz", str(KEY), upload=True))
-    _run(ssh_argv(ep, f"cd {REMOTE} && tar xzf bundle.tar.gz && rm bundle.tar.gz", str(KEY)))
-    _run(ssh_argv(ep, remote_detached(cmd), str(KEY)))
-    print(f"running. Next: python scripts/pod.py watch --pod {pid}")
+
+    def setup(pid, ep):
+        # persist the pod id first: if this process dies, `list` shows it as ours
+        rec = _pod_record(pid)
+        rec.parent.mkdir(parents=True, exist_ok=True)
+        rec.write_text(json.dumps({"pod": pid, "step": a.step, "created": time.time(),
+                                   "deadline": time.time() + cap * 3600}))
+        time.sleep(20)  # sshd start-up
+        bundle = _bundle()
+        _run(ssh_argv(ep, f"mkdir -p {REMOTE}", str(KEY)))
+        _run(scp_argv(ep, str(bundle), f"{REMOTE}/bundle.tar.gz", str(KEY), upload=True))
+        _run(ssh_argv(ep, f"cd {REMOTE} && tar xzf bundle.tar.gz && rm bundle.tar.gz", str(KEY)))
+        _run(ssh_argv(ep, remote_detached(cmd), str(KEY)))
+
+    pid = launch_pod(client, spec, setup)  # deletes the pod if anything in setup fails
+    print(f"running pod {pid}. Next: python scripts/pod.py watch --pod {pid}")
 
 
 def _fetch(client, pid):
@@ -106,24 +120,31 @@ def _fetch(client, pid):
         subprocess.run(scp_argv(ep, remote, str(dst), str(KEY), upload=False))
     _run(ssh_argv(ep, f"cd {REMOTE} && tar czf /workspace/out.tar.gz outputs", str(KEY)))
     _run(scp_argv(ep, "/workspace/out.tar.gz", str(dst), str(KEY), upload=False))
+    snap = dst / "snapshot"
     with tarfile.open(dst / "out.tar.gz") as tar:
-        tar.extractall(ROOT, filter="data")
-    print(f"outputs merged into {ROOT / 'outputs'}; logs in {dst}")
+        tar.extractall(snap, filter="data")  # pod-specific directory, never straight into outputs/
+    rep = merge_outputs(snap / "outputs", ROOT / "outputs")
+    (dst / "merge_report.json").write_text(json.dumps(rep, indent=1))
+    print(f"merged: {len(rep['copied'])} new, {len(rep['identical'])} identical, {len(rep['conflicts'])} conflicts")
+    for c in rep["conflicts"]:
+        print(f"  CONFLICT kept local version: {c} (pod version in {snap})")
 
 
 def cmd_watch(a):
     """Poll over SSH until the step writes /workspace/exit_code (the pod then
-    idles for its grace period), fetch outputs, delete the pod."""
+    idles for its grace period), fetch outputs, delete the pod. The launch
+    deadline is also enforced from this side."""
     env = _env()
     client = RunPodClient(env["RUNPOD_API_KEY"])
+    rec = json.loads(_pod_record(a.pod).read_text()) if _pod_record(a.pod).exists() else {}
     while True:
         pod = client.get_pod(a.pod)
         status = pod.get("desiredStatus")
         ep = ssh_endpoint(pod)
         finished = False
         if status == "RUNNING" and ep:
-            r = subprocess.run(ssh_argv(ep, "cat /workspace/exit_code 2>/dev/null; tail -n 2 /workspace/run.log 2>/dev/null",
-                                        str(KEY)), capture_output=True, text=True)
+            probe = "cat /workspace/exit_code 2>/dev/null; tail -n 2 /workspace/run.log 2>/dev/null"
+            r = subprocess.run(ssh_argv(ep, probe, str(KEY)), capture_output=True, text=True)
             lines = r.stdout.strip().splitlines()
             finished = bool(lines) and lines[0].strip().isdigit()
             print(time.strftime("%H:%M:%S"), status, "|", " / ".join(lines[-2:])[:160], flush=True)
@@ -133,9 +154,13 @@ def cmd_watch(a):
                 sys.exit("pod stopped before outputs were fetched: start it from the RunPod console, then run `fetch`.")
         if finished:
             break
+        if rec.get("deadline") and time.time() > rec["deadline"]:
+            print("deadline exceeded: fetching what exists and deleting the pod")
+            break
         time.sleep(a.every)
     _fetch(client, a.pod)
-    code = (ROOT / "outputs" / "pod_runs" / a.pod / "exit_code").read_text().strip()
+    ec = ROOT / "outputs" / "pod_runs" / a.pod / "exit_code"
+    code = ec.read_text().strip() if ec.exists() else "unknown"
     client.delete_pod(a.pod)
     print(f"step exit code {code}; pod {a.pod} deleted.")
 
@@ -150,8 +175,11 @@ def cmd_delete(a):
 
 
 def cmd_list(a):
-    for p in RunPodClient(_env()["RUNPOD_API_KEY"]).list_pods():
-        print(p.get("id"), p.get("name"), p.get("desiredStatus"), p.get("costPerHr"))
+    pods = RunPodClient(_env()["RUNPOD_API_KEY"]).list_pods()
+    known = {r.stem for r in (ROOT / "outputs" / "pods").glob("*.json")}
+    for p in pods:
+        mine = " (launched by this project)" if p.get("id") in known else ""
+        print(p.get("id"), p.get("name"), p.get("desiredStatus"), p.get("costPerHr"), mine)
 
 
 def main():
@@ -159,9 +187,11 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("launch")
     s.add_argument("--step", required=True, help='vq.cli arguments, e.g. "pilot --generator qwen2.5-1.5b"')
-    s.add_argument("--hours", type=float, required=True)
+    s.add_argument("--hours", type=float, required=True, help="hard cap for install + run")
+    s.add_argument("--grace", type=int, default=60, help="minutes the pod waits for `watch` before self-stopping")
     s.add_argument("--cloud", default="SECURE", choices=["SECURE", "COMMUNITY"])
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
+    s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")
     s.add_argument("--yes", action="store_true")
     s.set_defaults(fn=cmd_launch)
     for name, fn in (("watch", cmd_watch), ("fetch", cmd_fetch), ("delete", cmd_delete)):
