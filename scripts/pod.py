@@ -31,11 +31,10 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
                     finish_pod, launch_pod, merge_outputs, remote_archive_command, remote_detached, requires_gate,
-                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name)
+                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
-EUR_PER_HOUR = 0.34  # RTX 4090 COMMUNITY 0.34 USD/h + 100 GB volume + FX margin
 
 
 def _env():
@@ -88,7 +87,7 @@ def cmd_launch(a):
     print(f"pod: {spec.gpu_type} ({spec.cloud_type}), image {spec.image}")
     print(f"step: python -m vq.cli {a.step}")
     print(f"hard cap {a.hours} h (install + run) + grace {a.grace} min -> worst case {cap:.2f} h "
-          f"= {cap * EUR_PER_HOUR:.2f} EUR at {EUR_PER_HOUR} EUR/h")
+          f"= {cap * hourly_eur(a.cloud):.2f} EUR at {hourly_eur(a.cloud)} EUR/h ({a.cloud})")
     if not a.yes:
         print("DRY RUN: add --yes to create the pod.")
         return

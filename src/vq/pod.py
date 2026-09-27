@@ -125,6 +125,14 @@ def scp_argv(ep: tuple[str, int], src: str, dst: str, key: str, upload: bool) ->
     return ["scp", *_SSH_OPTS, "-i", key, "-P", str(ep[1]), "-r", a, b]
 
 
+# RTX 4090 list prices on 2026-09-27 (USD/h) converted with margin for the volume and FX
+_EUR_PER_HOUR = {"COMMUNITY": 0.34, "SECURE": 0.72}
+
+
+def hourly_eur(cloud: str) -> float:
+    return _EUR_PER_HOUR[cloud]
+
+
 INSTALL_FETCH_HOURS = 5 / 60  # upload, fetch and delete after the grace period
 
 

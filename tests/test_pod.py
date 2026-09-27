@@ -344,3 +344,10 @@ def test_idempotent_calls_retry_transient_network_errors(monkeypatch):
     s = OnceDropping()
     RunPodClient("K", session=s).delete_pod("p1")  # must not raise: deleting a pod is too important to skip
     assert [m for m, *_ in s.calls] == ["DELETE"]
+
+
+def test_displayed_price_depends_on_cloud():
+    from vq.pod import hourly_eur
+
+    assert hourly_eur("COMMUNITY") < hourly_eur("SECURE")
+    assert hourly_eur("SECURE") >= 0.69  # RTX 4090 SECURE 0.74 USD/h
