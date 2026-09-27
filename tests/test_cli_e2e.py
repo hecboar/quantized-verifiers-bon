@@ -81,3 +81,39 @@ def test_select_lambda_scores_dev_subset_only(env, monkeypatch):
             assert set(store.read("scores", n)["split"]) == {"dev"}
     frozen = json.loads((cli.OUT / "frozen_lambda.json").read_text())
     assert frozen["sky-4b"] == frozen["sky-8b"]
+
+
+def test_pilot_command_end_to_end_on_cpu(env, monkeypatch, capsys):
+    """The exact `pilot` command, with vLLM (child process) and the verifier
+    downloads replaced by fakes. Catches wiring errors before paying for a pod."""
+    import subprocess
+
+    import vq.verifiers
+    from test_pilot import fake_generate
+
+    store, ev, pools = env
+    items = cli._items()
+
+    def fake_run(argv, check=True):
+        assert argv[1:4] == ["-m", "vq.cli", "generate"] and "--split" in argv and "gate" in argv
+        n = int(argv[argv.index("--limit") + 1])
+        ids = cli._manifest("gate")[:n]
+        df = fake_generate([items[i] for i in ids])
+        store.write("raw_candidates", f"G__gate-pilot{n}", df)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    from conftest import make_tiny_prm
+    from test_runner import FakeTok
+
+    def by_kind(spec, device="cpu", dtype=None):
+        return (FakeTok(), make_tiny_prm(seed=2)) if spec.kind == "prm" else fake_loader(spec, device, dtype)
+
+    monkeypatch.setattr(vq.verifiers, "load_verifier", by_kind)
+    monkeypatch.setattr(cli, "_generic_texts", lambda: ["generic calibration text " * 400] * 20)
+    cli.main(["pilot", "--generator", "G", "--questions", "4", "--device", "cpu", "--chunk-tokens", "16"])
+    out = capsys.readouterr().out
+    assert "PILOT OK" in out
+    tp = json.loads((cli.OUT / "throughput.json").read_text())
+    assert set(tp["score"]) == {"sky-1.7b", "sky-4b", "sky-8b", "prm-7b"}
+    assert tp["quant_hours"]["gptq"] > 0

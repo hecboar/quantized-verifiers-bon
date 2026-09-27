@@ -234,3 +234,33 @@ def test_other_api_errors_are_not_retried():
 
     with pytest.raises(RuntimeError, match="invalid gpuTypeIds"):
         create_pod_when_available(RunPodClient("K", session=Bad()), PodSpec(name="x"), retry_s=0, max_wait_s=60)
+
+
+def test_finish_pod_deletes_even_when_fetch_fails():
+    """Failure seen in the real pilot: fetch crashed, pod kept billing."""
+    from vq.pod import finish_pod
+
+    s = FakeSession()
+    c = RunPodClient("K", session=s)
+
+    def failing_fetch(client, pid):
+        raise RuntimeError("tar: outputs: Cannot stat")
+
+    with pytest.raises(RuntimeError, match="Cannot stat"):
+        finish_pod(c, "pod123", failing_fetch)
+    assert ("DELETE", "https://rest.runpod.io/v1/pods/pod123") in [(m, u) for m, u, _, _ in s.calls]
+
+
+def test_finish_pod_deletes_after_successful_fetch():
+    from vq.pod import finish_pod
+
+    s = FakeSession()
+    got = finish_pod(RunPodClient("K", session=s), "pod123", lambda client, pid: "fetched")
+    assert got == "fetched" and any(m == "DELETE" for m, *_ in s.calls)
+
+
+def test_remote_archive_command_tolerates_missing_outputs():
+    from vq.pod import remote_archive_command
+
+    cmd = remote_archive_command("/workspace/vq")
+    assert "mkdir -p outputs" in cmd and cmd.index("mkdir -p outputs") < cmd.index("tar czf")

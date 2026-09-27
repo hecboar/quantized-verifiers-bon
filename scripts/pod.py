@@ -30,7 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
-                    launch_pod, merge_outputs, remote_detached, requires_gate, scp_argv, ssh_argv, ssh_endpoint)
+                    finish_pod, launch_pod, merge_outputs, remote_archive_command, remote_detached, requires_gate,
+                    scp_argv, ssh_argv, ssh_endpoint)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
@@ -119,7 +120,7 @@ def _fetch(client, pid):
     dst.mkdir(parents=True, exist_ok=True)
     for remote in ("/workspace/run.log", "/workspace/pip.log", "/workspace/exit_code"):
         subprocess.run(scp_argv(ep, remote, str(dst), str(KEY), upload=False))
-    _run(ssh_argv(ep, f"cd {REMOTE} && tar czf /workspace/out.tar.gz outputs", str(KEY)))
+    _run(ssh_argv(ep, remote_archive_command(REMOTE), str(KEY)))
     _run(scp_argv(ep, "/workspace/out.tar.gz", str(dst), str(KEY), upload=False))
     snap = dst / "snapshot"
     with tarfile.open(dst / "out.tar.gz") as tar:
@@ -159,11 +160,12 @@ def cmd_watch(a):
             print("deadline exceeded: fetching what exists and deleting the pod")
             break
         time.sleep(a.every)
-    _fetch(client, a.pod)
-    ec = ROOT / "outputs" / "pod_runs" / a.pod / "exit_code"
-    code = ec.read_text().strip() if ec.exists() else "unknown"
-    client.delete_pod(a.pod)
-    print(f"step exit code {code}; pod {a.pod} deleted.")
+    try:
+        finish_pod(client, a.pod, _fetch)  # the pod is deleted even if fetching fails
+    finally:
+        ec = ROOT / "outputs" / "pod_runs" / a.pod / "exit_code"
+        code = ec.read_text().strip() if ec.exists() else "unknown"
+        print(f"step exit code {code}; pod {a.pod} deleted.")
 
 
 def cmd_fetch(a):

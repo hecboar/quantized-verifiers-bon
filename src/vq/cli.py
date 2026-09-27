@@ -223,7 +223,7 @@ def _context(args):
 def _generic_texts() -> list[str]:
     from datasets import load_dataset
 
-    ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+    ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="train")  # namespaced id (newer hub requires it)
     return [t for t in ds["text"] if len(t) > 200]
 
 
@@ -276,14 +276,14 @@ def cmd_select_lambda(args) -> None:
 # ------------------------------------------------------------------ pilot
 def cmd_pilot(args) -> None:
     """Phase 0: throughput + integrity checks on a handful of dev questions."""
+    from . import verifiers as V
     from .pilot import run_pilot
     from .runner import generic_chunks
-    from .verifiers import VERIFIERS, load_verifier
 
     items = _items()
     ids = _manifest("gate")[: args.questions]
     texts = _generic_texts()
-    specs = {k: VERIFIERS[k] for k in ("sky-1.7b", "sky-4b", "sky-8b", "prm-7b")}
+    specs = {k: V.VERIFIERS[k] for k in ("sky-1.7b", "sky-4b", "sky-8b", "prm-7b")}
     def generate_in_subprocess(its):
         # vLLM keeps ~90% of VRAM reserved until its process exits: generate in a
         # child process so the verifiers can be loaded afterwards
@@ -295,9 +295,9 @@ def cmd_pilot(args) -> None:
         return _store().read("raw_candidates", name)
 
     rep = run_pilot(
-        items, ids, generate_in_subprocess, load_verifier, specs,
-        quant_verifier="sky-1.7b", n_calib=16, device="cuda",
-        generic_chunk=lambda tok, n: generic_chunks(tok, texts, 512, n),
+        items, ids, generate_in_subprocess, V.load_verifier, specs,
+        quant_verifier="sky-1.7b", n_calib=16, device=args.device,
+        generic_chunk=lambda tok, n: generic_chunks(tok, texts, args.chunk_tokens, n),
     )
     # GPTQ time for the grid: 128 calibration sequences, scaled from 1.7B to ~8B parameters
     per_seq = rep["quant_check"]["sky-1.7b"]["per_calib_seq_seconds"]
@@ -431,6 +431,8 @@ def main(argv=None) -> None:
     sp = add("pilot", cmd_pilot)
     sp.add_argument("--generator", default="qwen2.5-1.5b")
     sp.add_argument("--questions", type=int, default=16)
+    sp.add_argument("--device", default="cuda", help="cpu only for the local end-to-end test")
+    sp.add_argument("--chunk-tokens", type=int, default=512)
     sp = add("export-packed", cmd_export_packed)
     sp.add_argument("--verifier", required=True)
     sp = add("score-deployed", cmd_score_deployed)

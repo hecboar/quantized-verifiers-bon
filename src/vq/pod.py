@@ -184,6 +184,21 @@ def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, po
     return pid
 
 
+def finish_pod(client: RunPodClient, pod_id: str, fetch):
+    """Fetch outputs, then delete the pod no matter what happened while
+    fetching (in the first real pilot a failed fetch left the pod billing)."""
+    try:
+        return fetch(client, pod_id)
+    finally:
+        client.delete_pod(pod_id)
+
+
+def remote_archive_command(workdir: str) -> str:
+    """Archive the pod's outputs; a step that failed before writing any output
+    still yields a (possibly empty) archive instead of a tar error."""
+    return f"cd {workdir} && mkdir -p outputs && tar czf /workspace/out.tar.gz outputs"
+
+
 # steps allowed before the phase-1 gate has passed (cheap / validation only)
 _PRE_GATE = ("pilot", "gate", "annotate", "select-lambda", "export-packed", "parity", "plan", "prepare-data")
 
