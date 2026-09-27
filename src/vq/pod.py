@@ -182,7 +182,7 @@ def _find_pod_by_name(client: RunPodClient, name: str):
     return next((p for p in pods or [] if p.get("name") == name), None)
 
 
-def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int = 600, max_wait_s: int = 6 * 3600,
+def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int = 120, max_wait_s: int = 6 * 3600,
                               sleep=None) -> dict:
     """Retry creation only while RunPod reports no free instance of this GPU
     (costs nothing while waiting); any other API error is raised at once."""
@@ -216,7 +216,7 @@ def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int 
 
 
 def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, poll_s: int = 10,
-               retry_s: int = 600, max_stock_wait_s: int = 6 * 3600) -> str:
+               retry_s: int = 120, max_stock_wait_s: int = 6 * 3600) -> str:
     """Create a pod and run `setup(pod_id, ssh_endpoint)` (upload + start the
     step). Any failure before the step is running deletes the pod, so no GPU
     is left billing without a self-stopping job."""
