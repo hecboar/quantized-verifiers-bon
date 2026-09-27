@@ -136,7 +136,7 @@ def hourly_eur(cloud: str) -> float:
 INSTALL_FETCH_HOURS = 5 / 60  # upload, fetch and delete after the grace period
 
 
-def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspace/vq", grace_minutes: int = 60,
+def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspace/vq", grace_minutes: int = 20,
                       extras: str = "gpu") -> str:
     """One CLI step on the pod. A single hard cap (with forced kill) bounds
     install + run; a failed install stops immediately (exit 97). Afterwards the
@@ -146,7 +146,7 @@ def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspac
     if "'" in cli_args:
         raise ValueError("step arguments must not contain single quotes")
     minutes = int(round(max_hours * 60))
-    inner = (f"pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
+    inner = (f". scripts/pod_env.sh; pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
              f"|| {{ echo 97 > /workspace/exit_code; exit 97; }}; "
              f"python -m vq.cli {cli_args} > /workspace/run.log 2>&1; echo $? > /workspace/exit_code")
     return (
@@ -154,11 +154,11 @@ def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspac
         f"(timeout -k 120 {minutes}m bash -c '{inner}'; "
         f"[ -f /workspace/exit_code ] || echo 124 > /workspace/exit_code; "
         f"sleep {int(grace_minutes) * 60}; "
-        f"runpodctl stop pod $RUNPOD_POD_ID)"
+        f"bash scripts/self_stop.sh)"
     )
 
 
-def billed_hours_cap(max_hours: float, grace_minutes: int = 60) -> float:
+def billed_hours_cap(max_hours: float, grace_minutes: int = 20) -> float:
     """Worst-case billed time of one launch (cap + grace + transfer)."""
     return max_hours + grace_minutes / 60 + INSTALL_FETCH_HOURS
 
@@ -239,6 +239,16 @@ def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, po
         client.delete_pod(pid)
         raise
     return pid
+
+
+def parse_probe(raw: bytes | None) -> tuple[bool, list[str]]:
+    """`cat exit_code; tail run.log` output -> (finished, lines). Decoded as
+    UTF-8 with replacement: the log carries progress bars (Windows' default
+    cp1252 decoding crashed the first overnight watch)."""
+    if not raw:
+        return False, []
+    lines = raw.decode("utf-8", errors="replace").strip().splitlines()
+    return (bool(lines) and lines[0].strip().isdigit()), lines
 
 
 def finish_pod(client: RunPodClient, pod_id: str, fetch):

@@ -74,7 +74,9 @@ def test_bootstrap_bounds_everything_including_install():
     # failed install stops immediately with its own exit code (no python run)
     assert "|| { echo 97 > /workspace/exit_code; exit 97; }" in cmd
     # outputs stay fetchable for the grace period, then the pod stops itself
-    assert cmd.index("exit_code") < cmd.index("sleep 3600") < cmd.index("runpodctl stop pod $RUNPOD_POD_ID")
+    # (runpodctl is unconfigured in the image and SSH sessions lack RUNPOD_* vars)
+    assert cmd.index("exit_code") < cmd.index("sleep 3600") < cmd.index("bash scripts/self_stop.sh")  # grace=60 here
+    assert "runpodctl" not in cmd
 
 
 def test_bootstrap_rejects_quotes_in_step():
@@ -86,6 +88,7 @@ def test_billed_hours_include_install_and_grace():
     from vq.pod import billed_hours_cap
 
     assert billed_hours_cap(max_hours=3, grace_minutes=60) == pytest.approx(3 + 1 + 5 / 60)
+    assert billed_hours_cap(max_hours=3) == pytest.approx(3 + 20 / 60 + 5 / 60)  # default grace 20 min
 
 
 def test_launch_deletes_pod_if_setup_fails():
@@ -351,3 +354,47 @@ def test_displayed_price_depends_on_cloud():
 
     assert hourly_eur("COMMUNITY") < hourly_eur("SECURE")
     assert hourly_eur("SECURE") >= 0.69  # RTX 4090 SECURE 0.74 USD/h
+
+
+def test_self_stop_script_uses_pid1_env_and_graphql():
+    import subprocess
+    from pathlib import Path
+
+    script = Path(__file__).parents[1] / "scripts" / "self_stop.sh"
+    text = script.read_text()
+    assert ". scripts/pod_env.sh" in text  # RUNPOD_* vars come from PID 1 via pod_env.sh
+    assert "api.runpod.io/graphql" in text and "podStop" in text  # REST returns 403 for the pod key
+    code = " ".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+    assert "runpodctl" not in code  # never *called* (mentioned only in comments)
+    assert subprocess.run(["bash", "-n"], input=text.encode()).returncode == 0  # stdin: no Windows path issues
+
+
+def test_probe_parsing_survives_progress_bars_and_binary_noise():
+    from vq.pod import parse_probe
+
+    raw = "0\nLoading weights:  27%|██▋ | 109/399\n".encode("utf-8") + b"\x8f\xff"
+    finished, lines = parse_probe(raw)
+    assert finished is True and "Loading weights" in lines[1]
+    assert parse_probe(b"Loading weights: \xe2\x96\x88\n") == (False, ["Loading weights: █"])
+    assert parse_probe(b"") == (False, [])
+    assert parse_probe(None) == (False, [])
+
+
+def test_bootstrap_loads_pod_env_before_install_and_run():
+    """Pod env vars (HF_HOME, HF_TOKEN, PIP_CACHE_DIR, RUNPOD_*) exist only in the
+    container's PID 1, not in SSH sessions: the first real pilot cached 30 GB of
+    models on the 40 GB container disk and ran without HF_TOKEN."""
+    cmd = bootstrap_command("pilot --generator G", max_hours=3)
+    assert cmd.index(". scripts/pod_env.sh") < cmd.index("pip install") < cmd.index("python -m vq.cli")
+
+
+def test_pod_env_script_exports_the_needed_variables():
+    import subprocess
+    from pathlib import Path
+
+    script = Path(__file__).parents[1] / "scripts" / "pod_env.sh"
+    text = script.read_text()
+    assert "/proc/1/environ" in text
+    for var in ("HF_HOME", "HF_TOKEN", "PIP_CACHE_DIR", "RUNPOD_POD_ID", "RUNPOD_API_KEY"):
+        assert var in text
+    assert subprocess.run(["bash", "-n"], input=text.encode()).returncode == 0  # stdin: no Windows path issues

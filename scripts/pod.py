@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
                     finish_pod, launch_pod, merge_outputs, remote_archive_command, remote_detached, requires_gate,
-                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur)
+                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur, parse_probe)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
@@ -132,24 +132,44 @@ def _fetch(client, pid):
         print(f"  CONFLICT kept local version: {c} (pod version in {snap})")
 
 
+def _keep_awake():
+    """Windows: keep the machine from sleeping while `watch` runs (reverts
+    automatically when the process exits). Closing the lid may still sleep."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+        print("keep-awake on: this PC will not sleep while watch runs", flush=True)
+
+
 def cmd_watch(a):
     """Poll over SSH until the step writes /workspace/exit_code (the pod then
     idles for its grace period), fetch outputs, delete the pod. The launch
     deadline is also enforced from this side."""
+    _keep_awake()
     env = _env()
     client = RunPodClient(env["RUNPOD_API_KEY"])
     rec = json.loads(_pod_record(a.pod).read_text()) if _pod_record(a.pod).exists() else {}
     while True:
-        pod = client.get_pod(a.pod)
+        try:
+            pod = client.get_pod(a.pod)
+        except Exception as e:  # transient API/network failure: keep watching
+            print(time.strftime("%H:%M:%S"), f"API error ({type(e).__name__}); retrying", flush=True)
+            time.sleep(a.every)
+            continue
         status = pod.get("desiredStatus")
         ep = ssh_endpoint(pod)
         finished = False
         if status == "RUNNING" and ep:
             probe = "cat /workspace/exit_code 2>/dev/null; tail -n 2 /workspace/run.log 2>/dev/null"
-            r = subprocess.run(ssh_argv(ep, probe, str(KEY)), capture_output=True, text=True)
-            lines = r.stdout.strip().splitlines()
-            finished = bool(lines) and lines[0].strip().isdigit()
-            print(time.strftime("%H:%M:%S"), status, "|", " / ".join(lines[-2:])[:160], flush=True)
+            try:  # one failed probe must never end the watch
+                r = subprocess.run(ssh_argv(ep, probe, str(KEY)), capture_output=True, timeout=120)
+                finished, lines = parse_probe(r.stdout)
+            except Exception as e:
+                finished, lines = False, [f"probe failed: {type(e).__name__}"]
+            tail = " / ".join(lines[-2:])[-160:].encode("ascii", "replace").decode()
+            print(time.strftime("%H:%M:%S"), status, "|", tail, flush=True)
         else:
             print(time.strftime("%H:%M:%S"), status, flush=True)
             if status in ("EXITED", "STOPPED", "TERMINATED"):
@@ -191,7 +211,7 @@ def main():
     s = sub.add_parser("launch")
     s.add_argument("--step", required=True, help='vq.cli arguments, e.g. "pilot --generator qwen2.5-1.5b"')
     s.add_argument("--hours", type=float, required=True, help="hard cap for install + run")
-    s.add_argument("--grace", type=int, default=60, help="minutes the pod waits for `watch` before self-stopping")
+    s.add_argument("--grace", type=int, default=20, help="minutes the pod waits for `watch` before self-stopping")
     s.add_argument("--cloud", default="COMMUNITY", choices=["SECURE", "COMMUNITY"])
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
     s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")

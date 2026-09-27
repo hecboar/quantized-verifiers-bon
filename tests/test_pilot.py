@@ -49,3 +49,20 @@ def test_previous_model_is_freed_before_next_load():
     rep = run_pilot(items, list(items), fake_generate, tracking_loader, specs, quant_verifier="b", n_calib=4,
                     device="cpu", generic_chunk=lambda tok, n: [[5 + i] * 12 for i in range(n)])
     assert rep["ok"] is True
+
+
+def test_one_failing_verifier_does_not_abort_the_pilot():
+    items = {f"q{i}": Item(f"q{i}", f"question {i}?", str(i % 7), "numeric", "gsm8k-train") for i in range(4)}
+    specs = {"a": VerifierSpec("a", "none", "orm"), "broken": VerifierSpec("broken", "none", "orm"),
+             "c": VerifierSpec("c", "none", "orm")}
+
+    def loader(spec, device="cpu", dtype=None):
+        if spec.name == "broken":
+            raise OSError("No space left on device")
+        return fake_loader(spec, device, dtype)
+
+    rep = run_pilot(items, list(items), fake_generate, loader, specs, quant_verifier="a", n_calib=4,
+                    device="cpu", generic_chunk=lambda tok, n: [[5 + i] * 12 for i in range(n)])
+    assert set(rep["score"]) == {"a", "c"}
+    assert "No space left" in rep["errors"]["broken"]
+    assert rep["ok"] is False

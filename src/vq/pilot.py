@@ -72,7 +72,8 @@ def run_pilot(items: dict, ids: list[str], generate_fn, loader, specs: dict, qua
               n_calib: int = 16, device: str = "cuda", generic_chunk=None, dtype=torch.bfloat16) -> dict:
     """generate_fn(list[Item]) -> raw candidate DataFrame; loader(spec, device, dtype) -> (tok, model);
     generic_chunk(tokenizer, n) -> list of token-id lists for generic calibration."""
-    rep: dict = {"score": {}, "avg_score_tokens_by_verifier": {}, "parity": {}, "quant_check": {}, "rtn_runs": {}}
+    rep: dict = {"score": {}, "avg_score_tokens_by_verifier": {}, "parity": {}, "quant_check": {}, "rtn_runs": {},
+                 "errors": {}}
     t0 = time.perf_counter()
     raw = generate_fn([items[i] for i in ids])
     rep["generate"] = float(raw["n_tokens"].sum() / max(time.perf_counter() - t0, 1e-9))
@@ -87,14 +88,20 @@ def run_pilot(items: dict, ids: list[str], generate_fn, loader, specs: dict, qua
     for v, spec in specs.items():
         # each check runs in its own function: on return no reference to the
         # model survives, so the next (possibly 8B) model fits on the GPU
-        _score_check(rep, v, spec, loader, qs, texts, device, dtype)
+        # one failing verifier (download, disk, remote code) must not hide the others
+        try:
+            _score_check(rep, v, spec, loader, qs, texts, device, dtype)
+            if v == quant_verifier:
+                _free(device)
+                _gptq_check(rep, v, spec, loader, n_calib, device, dtype, generic_chunk)
+        except Exception as e:
+            rep["errors"][v] = f"{type(e).__name__}: {e}"[:500]
         _free(device)
-        if v == quant_verifier:
-            _gptq_check(rep, v, spec, loader, n_calib, device, dtype, generic_chunk)
-            _free(device)
 
-    rep["avg_score_tokens"] = float(sum(rep["avg_score_tokens_by_verifier"].values()) / len(specs))
-    rep["ok"] = (all(p < PARITY_TOL for p in rep["parity"].values())
+    done = rep["avg_score_tokens_by_verifier"]
+    rep["avg_score_tokens"] = float(sum(done.values()) / len(done)) if done else 0.0
+    rep["ok"] = (not rep["errors"] and len(rep["score"]) == len(specs)
+                 and all(p < PARITY_TOL for p in rep["parity"].values())
                  and all(s == "ok" for s in rep["rtn_runs"].values())
                  and all(q["audit_ok"] for q in rep["quant_check"].values()))
     return rep
