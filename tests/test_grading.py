@@ -85,3 +85,21 @@ class TestGrade:
 
     def test_math_unparseable(self):
         assert grade("no answer", r"\frac{1}{2}", kind="math") is False
+
+
+class TestLatexNumbers:
+    @pytest.mark.parametrize("raw,expected", [
+        (r"1{,}000", "1000"), (r"\frac{1}{2}", "0.5"), (r"\dfrac{3}{4}", "0.75"), (r"-\frac{1}{4}", "-0.25"),
+        (r"\$18", "18"), (r"50\%", "50"), (r"18 \text{ dollars}", "18"), (r"\textbf{42}", "42"), (r"1\,000", "1000"),
+    ])
+    def test_latex_forms(self, raw, expected):
+        assert normalize_number(raw) == expected
+
+    def test_boxed_latex_fraction_correct_for_numeric_gold(self):
+        assert grade(r"\boxed{\frac{1}{2}}", "0.5", kind="numeric") is True
+
+    def test_boxed_thousands_separator(self):
+        assert grade(r"\boxed{1{,}000}", "1000", kind="numeric") is True
+
+    def test_symbolic_not_a_number(self):
+        assert normalize_number(r"\sqrt{2}") is None

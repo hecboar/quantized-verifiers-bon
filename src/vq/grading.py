@@ -36,8 +36,24 @@ def extract_boxed(text: str) -> str | None:
     return None
 
 
+_FRAC = re.compile(r"\\[dt]?frac\{\s*([-+]?[\d.]+)\s*\}\{\s*([-+]?[\d.]+)\s*\}")
+_KEEP_CONTENT = re.compile(r"\\(?:textbf|mathbf|mathrm|boldsymbol)\{([^{}]*)\}")
+_DROP_TEXT = re.compile(r"\\(?:text|mbox|textrm)\{[^{}]*\}")
+
+
+def _strip_latex_number(s: str) -> str:
+    """Numeric LaTeX produced inside \\boxed{} -> plain number text."""
+    s = _KEEP_CONTENT.sub(r"\1", s)
+    s = _DROP_TEXT.sub("", s)  # units such as \text{ dollars}
+    s = s.replace("{,}", "")
+    for tok in (r"\,", r"\!", r"\;", r"\ ", r"\$", r"\%", "^\\circ", r"\left", r"\right"):
+        s = s.replace(tok, "")
+    return _FRAC.sub(r"\1/\2", s)
+
+
 def normalize_number(raw: str) -> str | None:
-    s = raw.strip().replace(",", "").replace("$", "").replace("%", "").strip()
+    s = _strip_latex_number(raw.strip())
+    s = s.replace(",", "").replace("$", "").replace("%", "").strip()
     s = s.rstrip(".")
     try:
         value = Fraction(s)
