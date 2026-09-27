@@ -80,3 +80,27 @@ def test_generation_coverage_is_validated(tmp_path):
     short = lambda s: pd.DataFrame([{"question_id": "q0", "k": 0, "text": "x", "n_tokens": 1, "finish_reason": "stop"}])
     with pytest.raises(ValueError, match="coverage"):
         generate_seeds(items, (0,), 1, short, CampaignStore(tmp_path), "G__eval")
+
+
+def test_generation_records_its_own_throughput(tmp_path):
+    """The pilot must read measured generation speed, not time a child process
+    that may have skipped work (third real pilot reused old candidates)."""
+    import time
+
+    from vq.generate import generate_seeds
+    from vq.store import CampaignStore
+
+    store = CampaignStore(tmp_path)
+    items = [Item(f"q{i}", "?", "1", "numeric", "gsm8k-test") for i in range(2)]
+
+    def one_seed(seed):
+        time.sleep(0.05)
+        return pd.DataFrame([{"question_id": it.id, "k": k, "text": "x", "n_tokens": 100, "finish_reason": "stop"}
+                             for it in items for k in range(2)])
+
+    generate_seeds(items, (0, 1), 2, one_seed, store, "G__eval", meta={"generator": "G"})
+    meta = store.meta("raw_candidates", "G__eval")
+    t = meta["throughput"]
+    assert t["output_tokens"] == 800 and t["seconds"] >= 0.1
+    assert 0 < t["tok_per_s"] <= 800 / 0.1
+    assert t["measured_seeds"] == 2 and meta["generator"] == "G"

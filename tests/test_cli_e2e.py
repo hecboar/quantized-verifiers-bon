@@ -99,7 +99,7 @@ def test_pilot_command_end_to_end_on_cpu(env, monkeypatch, capsys):
         n = int(argv[argv.index("--limit") + 1])
         ids = cli._manifest("gate")[:n]
         df = fake_generate([items[i] for i in ids])
-        store.write("raw_candidates", f"G__gate-pilot{n}", df)
+        store.write("raw_candidates", argv[argv.index("--name") + 1], df)  # pilot asks for a unique name
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -134,7 +134,8 @@ def test_pilot_saves_and_prints_errors_when_a_verifier_fails(env, monkeypatch, c
 
     def fake_run(argv, check=True):
         n = int(argv[argv.index("--limit") + 1])
-        store.write("raw_candidates", f"G__gate-pilot{n}", fake_generate([items[i] for i in cli._manifest("gate")[:n]]))
+        store.write("raw_candidates", argv[argv.index("--name") + 1],
+                    fake_generate([items[i] for i in cli._manifest("gate")[:n]]))
         return subprocess.CompletedProcess(argv, 0)
 
     def loader(spec, device="cpu", dtype=None):
@@ -151,3 +152,36 @@ def test_pilot_saves_and_prints_errors_when_a_verifier_fails(env, monkeypatch, c
     assert "PILOT FAILED" in out and "CUDA error: something specific" in out
     rep = json.loads((cli.OUT / "pilot_G.json").read_text())
     assert "sky-1.7b" in rep["errors"]
+
+
+def test_pilot_generates_fresh_and_reads_measured_throughput(env, monkeypatch, capsys):
+    import subprocess
+
+    import vq.verifiers
+    from conftest import make_tiny_prm
+    from test_pilot import fake_generate
+    from test_runner import FakeTok
+
+    store, ev, pools = env
+    items = cli._items()
+    seen = {}
+
+    def fake_run(argv, check=True):
+        seen["argv"] = argv
+        assert "--fresh" in argv  # never reuse old candidates in the pilot
+        n = int(argv[argv.index("--limit") + 1])
+        name = argv[argv.index("--name") + 1]
+        df = fake_generate([items[i] for i in cli._manifest("gate")[:n]])
+        store.write("raw_candidates", name, df, meta={"throughput": {"tok_per_s": 12345.0, "output_tokens": 999,
+                                                                     "seconds": 0.08, "measured_seeds": 4}})
+        return subprocess.CompletedProcess(argv, 0)
+
+    def loader(spec, device="cpu", dtype=None):
+        return (FakeTok(), make_tiny_prm(seed=2)) if spec.kind == "prm" else fake_loader(spec, device, dtype)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(vq.verifiers, "load_verifier", loader)
+    monkeypatch.setattr(cli, "_generic_texts", lambda: ["generic calibration text " * 400] * 20)
+    cli.main(["pilot", "--generator", "G", "--questions", "4", "--device", "cpu", "--chunk-tokens", "16"])
+    rep = json.loads((cli.OUT / "pilot_G.json").read_text())
+    assert rep["generate"] == 12345.0 and rep["generate_source"] == "measured_by_generation"

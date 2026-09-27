@@ -75,8 +75,14 @@ def run_pilot(items: dict, ids: list[str], generate_fn, loader, specs: dict, qua
     rep: dict = {"score": {}, "avg_score_tokens_by_verifier": {}, "parity": {}, "quant_check": {}, "rtn_runs": {},
                  "errors": {}}
     t0 = time.perf_counter()
-    raw = generate_fn([items[i] for i in ids])
-    rep["generate"] = float(raw["n_tokens"].sum() / max(time.perf_counter() - t0, 1e-9))
+    out = generate_fn([items[i] for i in ids])
+    if isinstance(out, tuple):  # (candidates, throughput measured by the generation itself)
+        raw, measured = out
+        rep["generate"], rep["generate_source"] = float(measured), "measured_by_generation"
+    else:
+        raw = out
+        rep["generate"] = float(raw["n_tokens"].sum() / max(time.perf_counter() - t0, 1e-9))
+        rep["generate_source"] = "wall_clock_including_load"
     df = annotate(raw, items)
     rep["avg_gen_tokens"] = float(df["n_tokens"].mean())
     rep["truncated_frac"] = float(df["truncated"].mean())

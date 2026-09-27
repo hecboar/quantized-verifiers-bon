@@ -181,8 +181,10 @@ def cmd_generate(args) -> None:
     ids = _manifest(args.split)[: args.limit] if args.limit else _manifest(args.split)
     # the secondary generator's gen2 subset plays the role of its evaluation pools
     split_name = "eval" if args.split == "gen2" else args.split
-    name = f"{args.generator}__{split_name}" + (f"-pilot{args.limit}" if args.limit else "")
+    name = args.name or (f"{args.generator}__{split_name}" + (f"-pilot{args.limit}" if args.limit else ""))
     if store.done("raw_candidates", name):
+        if args.fresh:
+            sys.exit(f"{name} already exists but --fresh was requested")
         print(f"{name} exists, skipping")
         return
     generate_pool(GENERATORS[args.generator], [items[i] for i in ids], store, name, tuple(g["seeds"]),
@@ -289,10 +291,15 @@ def cmd_pilot(args) -> None:
         # child process so the verifiers can be loaded afterwards
         import subprocess
 
-        name = f"{args.generator}__gate-pilot{args.questions}"
+        import time as _t
+
+        name = f"{args.generator}__gate-pilot{args.questions}-{int(_t.time())}"  # fresh every pilot
         subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--generator", args.generator,
-                        "--split", "gate", "--limit", str(args.questions)], check=True)
-        return _store().read("raw_candidates", name)
+                        "--split", "gate", "--limit", str(args.questions), "--name", name, "--fresh"], check=True)
+        st = _store()
+        tps = st.meta("raw_candidates", name).get("throughput", {}).get("tok_per_s")
+        df = st.read("raw_candidates", name)
+        return (df, tps) if tps else df
 
     rep = run_pilot(
         items, ids, generate_in_subprocess, V.load_verifier, specs,
@@ -425,6 +432,8 @@ def main(argv=None) -> None:
     sp.add_argument("--generator", required=True)
     sp.add_argument("--split", choices=["eval", "dev", "gen2", "gate"], required=True)
     sp.add_argument("--limit", type=int, default=None)
+    sp.add_argument("--name", default=None, help="store name override (the pilot uses a unique one)")
+    sp.add_argument("--fresh", action="store_true", help="fail instead of reusing existing candidates")
     sp = add("annotate", cmd_annotate)
     sp.add_argument("--generator", default=None)
     sp = add("score", cmd_score)

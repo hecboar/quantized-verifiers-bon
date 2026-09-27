@@ -72,11 +72,18 @@ def generate_seeds(items: list[Item], seeds: tuple[int, ...], per_seed: int, one
     """Resumable generation: one shard per seed (a pod timeout loses at most
     one seed). `one_seed(seed)` returns rows with question_id, k (0..per_seed-1),
     text, n_tokens, finish_reason. The merged pool is validated for coverage."""
+    import time
+
     done = set(store.shard_ids("raw_candidates", name))
+    gen_tokens, gen_seconds, measured = 0, 0.0, 0
     for si, seed in enumerate(seeds):
         if si in done:
             continue
+        t0 = time.perf_counter()
         df = one_seed(seed).copy()
+        gen_seconds += time.perf_counter() - t0
+        gen_tokens += int(df["n_tokens"].sum())
+        measured += 1
         df["seed"] = seed
         df["cand"] = si * per_seed + df["k"]
         store.write_shard("raw_candidates", name, si, df.drop(columns="k"))
@@ -85,6 +92,11 @@ def generate_seeds(items: list[Item], seeds: tuple[int, ...], per_seed: int, one
     got = set(zip(merged["question_id"], merged["cand"]))
     if got != expected or len(merged) != len(expected):
         raise ValueError(f"{name}: candidate coverage mismatch ({len(expected - got)} missing, {len(got - expected)} extra)")
+    meta = dict(meta or {})
+    meta["throughput"] = {  # decoding only (model loading excluded); feeds the budget forecast
+        "output_tokens": gen_tokens, "seconds": gen_seconds, "measured_seeds": measured,
+        "tok_per_s": gen_tokens / gen_seconds if gen_seconds > 0 else None,
+    }
     store.write("raw_candidates", name, merged, meta=meta, overwrite=True)
     return merged
 
