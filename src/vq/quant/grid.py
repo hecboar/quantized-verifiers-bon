@@ -60,9 +60,11 @@ def quantize_rtn(w: torch.Tensor, bits: int, group_size: int | None, return_para
     return out.to(dtype)
 
 
-def quantize_nf4(w: torch.Tensor, block_size: int = 64) -> torch.Tensor:
+def quantize_nf4(w: torch.Tensor, block_size: int = 64, chunk_blocks: int = 1 << 16) -> torch.Tensor:
     """Blockwise absmax NF4 (bitsandbytes layout: contiguous blocks of the
-    flattened tensor). Double quantization of absmax is not simulated."""
+    flattened tensor). Double quantization of absmax is not simulated.
+    Nearest-code search runs `chunk_blocks` blocks at a time: the full
+    [blocks, 64, 16] comparison for an 8B down_proj needs 3 GB at once."""
     dtype, shape = w.dtype, w.shape
     x = w.float().reshape(-1)
     if x.numel() % block_size:
@@ -71,6 +73,9 @@ def quantize_nf4(w: torch.Tensor, block_size: int = 64) -> torch.Tensor:
     absmax = blocks.abs().amax(dim=1, keepdim=True)
     safe = torch.where(absmax == 0, torch.ones_like(absmax), absmax)
     code = NF4_CODEBOOK.to(x.device)
-    idx = (blocks / safe).unsqueeze(-1).sub(code).abs().argmin(dim=-1)
-    deq = code[idx] * absmax
+    deq = torch.empty_like(blocks)
+    for i in range(0, blocks.shape[0], chunk_blocks):
+        sl = slice(i, i + chunk_blocks)
+        idx = (blocks[sl] / safe[sl]).unsqueeze(-1).sub(code).abs().argmin(dim=-1)
+        deq[sl] = code[idx] * absmax[sl]
     return deq.reshape(shape).to(dtype)

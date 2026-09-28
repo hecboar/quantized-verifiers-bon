@@ -163,3 +163,27 @@ class TestNF4MatchesBitsandbytes:
         ref = F.dequantize_4bit(q, st)
         ours = quantize_nf4(w, block_size=64)
         torch.testing.assert_close(ours, ref, atol=0, rtol=0)  # bit-identical to bitsandbytes
+
+
+class TestNF4Memory:
+    def test_chunked_equals_unchunked(self):
+        torch.manual_seed(5)
+        w = torch.randn(96, 1024)
+        torch.testing.assert_close(quantize_nf4(w, 64, chunk_blocks=7), quantize_nf4(w, 64, chunk_blocks=10**9),
+                                   atol=0, rtol=0)
+
+    def test_peak_temporary_is_bounded(self, monkeypatch):
+        """8B down_proj (4096x12288) built a 3 GB [blocks, 64, 16] temporary at once."""
+        import vq.quant.grid as g
+
+        seen = []
+        real_sub = torch.Tensor.sub
+
+        def spy(self, other, *a, **k):
+            out = real_sub(self, other, *a, **k)
+            seen.append(out.numel())
+            return out
+
+        monkeypatch.setattr(torch.Tensor, "sub", spy)
+        g.quantize_nf4(torch.randn(64, 4096), 64, chunk_blocks=128)
+        assert max(seen) <= 128 * 64 * 16

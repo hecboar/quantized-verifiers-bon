@@ -174,9 +174,13 @@ def quantize_model(
                 elif calib.pairs:
                     diff_rows[f"{li}.{name}"] = len(calib.pairs)
                 H = acc[name].finalize(lam=lam)
+                acc[name] = None  # free this linear's Hessian before the next one (8B on 24 GB)
                 q, sc, zr = gptq_quantize(lin.weight.data, H, bits, group_size, damp=damp, return_params=True)
+                del H
                 if keep_params:
                     params[full_names[id(lin)]] = (sc.cpu(), zr.cpu())
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             else:  # awq
                 X = torch.cat(rows[name])[: calib.awq_max_rows]
                 awq_rows_max = max(awq_rows_max, X.shape[0])
