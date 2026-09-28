@@ -104,3 +104,41 @@ def test_generation_records_its_own_throughput(tmp_path):
     assert t["output_tokens"] == 800 and t["seconds"] >= 0.1
     assert 0 < t["tok_per_s"] <= 800 / 0.1
     assert t["measured_seeds"] == 2 and meta["generator"] == "G"
+
+
+def test_vllm_context_is_capped_to_what_generation_needs(tmp_path, monkeypatch):
+    """Phase 2: Llama-3.2 defaults to a 131k context, whose KV cache (14 GiB) did not
+    fit next to the weights on 24 GB. Prompts + 1024 output tokens need << 4096."""
+    import sys
+    import types
+
+    from vq.generate import generate_pool
+    from vq.store import CampaignStore
+
+    seen = {}
+
+    class FakeOut:
+        def __init__(self, k):
+            self.text, self.token_ids, self.finish_reason = f"x{k}", [1, 2], "stop"
+
+    class FakeLLM:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def get_tokenizer(self):
+            class T:
+                def apply_chat_template(self, msgs, tokenize=False, add_generation_prompt=True):
+                    return "p"
+            return T()
+
+        def generate(self, prompts, sp):
+            return [types.SimpleNamespace(outputs=[FakeOut(k) for k in range(sp.n)]) for _ in prompts]
+
+    class FakeSP:
+        def __init__(self, **kw):
+            self.n = kw["n"]
+
+    monkeypatch.setitem(sys.modules, "vllm", types.SimpleNamespace(LLM=FakeLLM, SamplingParams=FakeSP))
+    items = [Item("q0", "?", "1", "numeric", "gsm8k-test")]
+    generate_pool("m", items, CampaignStore(tmp_path), "G__eval", seeds=(0,), per_seed=2, max_tokens=1024)
+    assert seen["max_model_len"] == 4096 and seen["max_model_len"] >= 1024 + 1024

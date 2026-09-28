@@ -113,12 +113,16 @@ def generate_pool(
     max_tokens: int = 1024,
     gpu_memory_utilization: float = 0.9,
     meta: dict | None = None,
+    max_model_len: int = 4096,
 ) -> pd.DataFrame:
     """GPU only (vLLM). Resumable per seed via generate_seeds."""
     from vllm import LLM, SamplingParams
 
     # gated models authenticate through the HF_TOKEN env var (read by huggingface_hub)
-    llm = LLM(model=model_id, dtype="bfloat16", seed=0, gpu_memory_utilization=gpu_memory_utilization)
+    # context capped to what generation needs (prompt ~200 + max_tokens): the models'
+    # native windows (131k for Llama-3.2) reserve more KV cache than fits on 24 GB
+    llm = LLM(model=model_id, dtype="bfloat16", seed=0, gpu_memory_utilization=gpu_memory_utilization,
+              max_model_len=max_model_len)
     tok = llm.get_tokenizer()
     prompts = [build_prompt(tok, it.question) for it in items]
 
