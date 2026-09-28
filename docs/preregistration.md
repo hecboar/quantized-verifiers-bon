@@ -193,3 +193,11 @@ the 1200 eval MATH questions; α = 0.01 (roughly the Holm threshold for the firs
 
 Dev effects are expected to shrink (winner's curse); the shrinkage figure is a
 planning assumption, not a prediction.
+
+**2026-09-28 — CH-GPTQ λ frozen (phase 5a, dev data only).** `select-lambda` on
+Skywork-Reward-V2-Qwen3-4B, 100 dev-scored questions, criterion registered in the plan
+(lowest Best-of-32 winner-change rate vs BF16; ties → smaller λ). Winner-change rates:
+λ=0.5: 0.23, λ=2: 0.26, λ=8: 0.22 → **λ = 8** frozen for sky-4b and sky-8b. The
+differences (1–4 questions of 100) are within noise and λ lies at the edge of the
+registered grid; the grid is not extended post hoc. Reported as selected, together with
+this insensitivity.
