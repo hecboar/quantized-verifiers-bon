@@ -593,3 +593,9 @@ def test_install_has_its_own_time_limit():
 def test_install_cap_is_configurable():
     """Phase 6 installs gptqmodel, which may compile CUDA extensions."""
     assert "timeout -k 60 75m pip install" in bootstrap_command("phase6 --generator G", max_hours=6, install_minutes=75)
+
+
+def test_pip_retries_transient_download_timeouts():
+    """A pod failed its install on `files.pythonhosted.org: Read timed out`."""
+    cmd = bootstrap_command("score --phase p", max_hours=2)
+    assert "pip install --retries 10 --timeout 60 -q" in cmd

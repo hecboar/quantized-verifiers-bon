@@ -148,7 +148,7 @@ def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspac
     if "'" in cli_args:
         raise ValueError("step arguments must not contain single quotes")
     minutes = int(round(max_hours * 60))
-    inner = (f". scripts/pod_env.sh; timeout -k 60 {int(install_minutes)}m pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
+    inner = (f". scripts/pod_env.sh; timeout -k 60 {int(install_minutes)}m pip install --retries 10 --timeout 60 -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
              f"|| {{ echo 97 > /workspace/exit_code; exit 97; }}; "
              f"mkdir -p outputs/env; pip freeze > outputs/env/pip_freeze.txt 2>/dev/null; "
              f"nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv > outputs/env/gpu.csv 2>&1; "
