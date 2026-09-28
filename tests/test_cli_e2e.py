@@ -233,3 +233,36 @@ def test_phase1_allowed_before_gate():
     from vq.pod import requires_gate
 
     assert requires_gate("phase1 --generator G") is False
+
+
+def test_phase2_generates_both_generators_and_annotates(env, monkeypatch):
+    import subprocess
+
+    from test_pilot import fake_generate
+
+    store, ev, pools = env
+    items = cli._items()
+    calls = []
+
+    def fake_run(argv, check=True):
+        calls.append(argv)
+        gen = argv[argv.index("--generator") + 1]
+        split = argv[argv.index("--split") + 1]
+        name = argv[argv.index("--name") + 1]
+        manifest = "eval" if split == "eval" else split  # test env has no MATH extension
+        ids = cli._manifest(manifest)[:6]  # tiny subset for the test
+        store.write("raw_candidates", name, fake_generate([items[i] for i in ids]), overwrite=True)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(cli, "_manifest", lambda name, real=cli._manifest: real(name)[:6])
+    cli.main(["phase2", "--generator", "G"])
+    got = [(a[a.index("--generator") + 1], a[a.index("--split") + 1], a[a.index("--name") + 1]) for a in calls]
+    assert got == [("G", "eval", "G__eval"), ("llama3.2-3b", "gen2", "llama3.2-3b__eval")]
+    assert store.done("candidates", "G__eval") and store.done("candidates", "llama3.2-3b__eval")
+
+
+def test_phase2_is_a_grid_step_needing_the_gate():
+    from vq.pod import requires_gate
+
+    assert requires_gate("phase2 --generator G") is True

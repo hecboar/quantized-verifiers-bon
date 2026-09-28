@@ -321,6 +321,31 @@ def cmd_phase1(args) -> None:
                   f"(floor {floor:.3f})")
 
 
+def cmd_phase2(args) -> None:
+    """Phase 2 in one pod step: evaluation pools for the primary generator
+    (preregistered full manifest) and the secondary generator's gen2 subset,
+    each in its own child process (vLLM frees VRAM on exit), then annotation."""
+    import subprocess
+
+    from .experiment import load_config
+
+    cfg = load_config(args.config)
+    secondary = cfg["generation"]["secondary"]
+    for gen, split in ((args.generator, "eval"), (secondary, "gen2")):
+        subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--generator", gen, "--split", split,
+                        "--name", f"{gen}__eval"], check=True)
+    for gen in (args.generator, secondary):
+        cmd_annotate(argparse.Namespace(generator=gen, config=args.config))
+    st = _store()
+    for gen in (args.generator, secondary):
+        meta = st.meta("raw_candidates", f"{gen}__eval")
+        df = st.read("candidates", f"{gen}__eval")
+        print(f"[phase2] {gen}: {df['question_id'].nunique()} questions, {len(df)} candidates, "
+              f"acc={df['correct'].mean():.3f}, parsed={df['parsed'].mean():.3f}, "
+              f"truncated={df['truncated'].mean():.3f}, gen tok/s={meta.get('throughput', {}).get('tok_per_s')}",
+              flush=True)
+
+
 def cmd_select_lambda(args) -> None:
     """CH lambda chosen on the frozen dev-scored subset only (no eval scoring),
     then frozen for every CH run (plan §5)."""
@@ -519,6 +544,8 @@ def main(argv=None) -> None:
     sp.add_argument("--only", default=None, help="comma-separated verifier keys")
     sp.add_argument("--conditions", default=None, help="comma-separated condition names")
     sp.add_argument("--dev-only", action="store_true", help="score development pools only (phase-1 gate)")
+    sp = add("phase2", cmd_phase2)
+    sp.add_argument("--generator", required=True)
     sp = add("phase1", cmd_phase1)
     sp.add_argument("--generator", required=True)
     sp.add_argument("--limit", type=int, default=None, help="dev questions (tests only; default all 400)")
