@@ -90,4 +90,6 @@ The grader was left unchanged (it still rejects "last number in the text"). Inst
 Llama-3.2 only, the same instruction is repeated at the end of the user turn
 (`vq.generate.INSTRUCTION_IN_USER`), and its 300-question pools are regenerated. The
 first pools are archived, not used. The primary generator (Qwen2.5-1.5B-Instruct, 88.7%
-extractable) is unchanged. No verifier had scored any evaluation candidate at this point.
+extractable) is unchanged. No verifier had scored any evaluation candidate at this point. Result of the
+regeneration: extractable answers 65.6% -> 81.1%, candidate accuracy 42.1% -> 53.5%,
+truncated 3.8% -> 3.6%.
