@@ -201,3 +201,19 @@ Skywork-Reward-V2-Qwen3-4B, 100 dev-scored questions, criterion registered in th
 differences (1–4 questions of 100) are within noise and λ lies at the edge of the
 registered grid; the grid is not extended post hoc. Reported as selected, together with
 this insensitivity.
+
+**2026-09-28 — PRM scoring bug found and fixed; all PRM scores recomputed.** Qwen2.5-Math-PRM-7B
+runs on its own remote modeling code. Under transformers 5 the model is built on the
+meta device and that code's rotary-embedding buffers (`inv_freq`, `cos_cached`,
+`sin_cached`, non-persistent, computed in `__init__`) came back uninitialised after
+`from_pretrained` (e.g. `inv_freq[:3]` = [−33.25, 2e−42, 0]). Every PRM score was
+therefore computed with corrupted positions: BF16 Best-of-32 accuracy was below the
+random-candidate rate (GSM8K 0.484, MATH 0.412 vs 0.521), the minimum step reward
+averaged 0.18, and its correlation with correctness was 0.10. The Skywork ORMs use
+native transformers classes and are unaffected (round-trip logits identical up to
+3e−5). Fix (`vq.verifiers.repair_legacy_rotary`, `check_rotary`): the buffers are
+recomputed exactly as the remote `__init__` does, and every load now fails if any
+rotary buffer is not sane. The affected PRM outputs are archived
+(`outputs/archive/prm_broken_rope/`) and not used; all PRM conditions are re-scored.
+The PRM is not part of the confirmatory family (c1, c4, c5 use the ORMs), so no
+registered test is affected.

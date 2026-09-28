@@ -83,3 +83,30 @@ def test_quantization_runs_and_leaves_head_untouched(tiny_prm, method):
     sep = tokenizer.encode(PRM_STEP_TOKEN, add_special_tokens=False)[0]
     out = prm_score_ids(model, seqs, sep, tokenizer.eos_token_id, max_tokens=100_000)
     assert [len(r) for r in out] == [3, 3, 1]
+
+
+def test_from_pretrained_round_trip_after_rotary_repair(tiny_prm, tmp_path):
+    """transformers 5 + the PRM's remote code: from_pretrained left the rotary
+    buffers uninitialised (garbage positions). After repair the reloaded model
+    must reproduce the original logits."""
+    import glob
+    import shutil
+
+    from transformers import AutoConfig, AutoModel
+
+    from vq.verifiers import check_rotary, from_pretrained_compat, patch_prm_config, repair_legacy_rotary
+
+    tokenizer, model = tiny_prm
+    model.save_pretrained(tmp_path)
+    for f in glob.glob(os.path.expanduser("~/.cache/huggingface/hub/models--Qwen--Qwen2.5-Math-PRM-7B/snapshots/*/*.py")):
+        shutil.copy(f, tmp_path)
+    cfg = patch_prm_config(AutoConfig.from_pretrained(tmp_path, trust_remote_code=True), tokenizer)
+    m1 = from_pretrained_compat(AutoModel, str(tmp_path), dtype=torch.float32, config=cfg, trust_remote_code=True,
+                                device_map="cpu").eval()
+    assert repair_legacy_rotary(m1) == 2
+    check_rotary(m1)
+    ids = torch.tensor([_seqs(tokenizer)[0]])
+    with torch.no_grad():
+        a = model(input_ids=ids, use_cache=False)[0].float()
+        b = m1(input_ids=ids, use_cache=False)[0].float()
+    assert (a - b).abs().max().item() < 1e-3

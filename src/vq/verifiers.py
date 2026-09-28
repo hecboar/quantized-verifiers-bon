@@ -119,6 +119,43 @@ def prm_score_ids(model, seqs: list[list[int]], sep_id: int, pad_id: int, max_to
 
 
 # ------------------------------------------------------------------ loading
+def repair_legacy_rotary(model) -> int:
+    """Recompute remote-code rotary buffers (inv_freq, cos/sin caches), exactly
+    as their __init__ does (on CPU, default dtype), then move them back.
+    transformers 5 builds models on the meta device; the PRM's legacy
+    Qwen2RotaryEmbedding computes these non-persistent buffers in __init__, so
+    after from_pretrained they held garbage (inv_freq [-33.25, 2e-42, 0])."""
+    n = 0
+    for m in model.modules():
+        if not (hasattr(m, "inv_freq") and hasattr(m, "_set_cos_sin_cache") and hasattr(m, "base")):
+            continue
+        dev = m.inv_freq.device
+        inv = 1.0 / (m.base ** (torch.arange(0, m.dim, 2, dtype=torch.int64).float() / m.dim))
+        m.register_buffer("inv_freq", inv, persistent=False)
+        m._set_cos_sin_cache(seq_len=m.max_position_embeddings, device=inv.device, dtype=torch.get_default_dtype())
+        m.to(dev)
+        n += 1
+    return n
+
+
+def check_rotary(model) -> None:
+    """Every rotary module must hold sane buffers (finite, positive, decreasing
+    frequencies; |cos|, |sin| <= 1); raises otherwise."""
+    for name, m in model.named_modules():
+        inv = getattr(m, "inv_freq", None)
+        if not isinstance(inv, torch.Tensor):
+            continue
+        f = inv.detach().float().cpu()
+        ok = bool(torch.isfinite(f).all() and (f > 0).all() and (f[1:] <= f[:-1]).all())
+        for c in ("cos_cached", "sin_cached"):
+            t = getattr(m, c, None)
+            if isinstance(t, torch.Tensor):
+                t = t.detach().float().cpu()
+                ok = ok and bool(torch.isfinite(t).all() and (t.abs() <= 1.0 + 1e-3).all())
+        if not ok:
+            raise RuntimeError(f"corrupted rotary buffers in {name or type(m).__name__}: inv_freq[:3]={f[:3].tolist()}")
+
+
 def patch_prm_config(cfg, tokenizer):
     """The PRM's remote code predates transformers 5 and reads
     `config.pad_token_id`, which newer configs no longer define by default."""
@@ -177,7 +214,10 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
 
         cfg = patch_prm_config(AutoConfig.from_pretrained(spec.hf_id, trust_remote_code=True, token=token), tok)
         model = from_pretrained_compat(AutoModel, spec.hf_id, dtype=dtype, config=cfg, trust_remote_code=True, **kwargs)
-    return tok, model.to(device).eval()
+        repair_legacy_rotary(model)
+    model = model.to(device).eval()
+    check_rotary(model)
+    return tok, model
 
 
 def load_verifier_deployed(spec: VerifierSpec, scheme: str, device: str = "cuda", dtype=torch.bfloat16,
@@ -201,6 +241,8 @@ def load_verifier_deployed(spec: VerifierSpec, scheme: str, device: str = "cuda"
     else:
         cfg = patch_prm_config(AutoConfig.from_pretrained(src, trust_remote_code=True, token=token), tok)
         model = from_pretrained_compat(AutoModel, src, dtype=dtype, config=cfg, trust_remote_code=True, **kw)
+        repair_legacy_rotary(model)
+    check_rotary(model)
     return tok, model.eval()
 
 

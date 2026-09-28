@@ -85,3 +85,52 @@ def test_orm_rejects_pad_token_inside_sequence(tiny_rm):
     # HF sequence-classification pooling locates the last token via pad_token_id
     with pytest.raises(ValueError, match="pad"):
         orm_score_ids(tiny_rm, [[5, 0, 7]], pad_id=0)
+
+
+class _LegacyRotary(torch.nn.Module):
+    """Mimics the PRM's remote-code Qwen2RotaryEmbedding (non-persistent buffers
+    computed in __init__)."""
+
+    def __init__(self, dim=16, max_position_embeddings=32, base=10000):
+        super().__init__()
+        self.dim, self.max_position_embeddings, self.base = dim, max_position_embeddings, base
+        inv = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).float() / dim))
+        self.register_buffer("inv_freq", inv, persistent=False)
+        self._set_cos_sin_cache(max_position_embeddings, inv.device, torch.get_default_dtype())
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(seq_len, device=device, dtype=torch.int64).type_as(self.inv_freq)
+        emb = torch.cat((torch.outer(t, self.inv_freq),) * 2, dim=-1)
+        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
+
+
+def test_repair_legacy_rotary_restores_corrupted_buffers():
+    """transformers 5 builds the PRM on the meta device: its remote-code rotary
+    buffers came back as garbage (inv_freq [-33.25, 2e-42, 0]) and every PRM
+    score was computed with corrupted positions."""
+    from vq.verifiers import check_rotary, repair_legacy_rotary
+
+    good = _LegacyRotary()
+    bad = _LegacyRotary()
+    bad.inv_freq.copy_(torch.tensor([-33.25, 2e-42, 0.0, 5.0, 1.0, 2.0, 3.0, 4.0]))
+    bad.cos_cached.fill_(2058.0)
+    model = torch.nn.ModuleDict({"a": bad})
+    with pytest.raises(RuntimeError, match="rotary"):
+        check_rotary(model)
+    assert repair_legacy_rotary(model) == 1
+    check_rotary(model)
+    for name in ("inv_freq", "cos_cached", "sin_cached"):
+        assert torch.equal(getattr(bad, name), getattr(good, name))
+
+
+def test_check_rotary_accepts_modern_rotary_modules():
+    from vq.verifiers import check_rotary
+
+    class Modern(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.register_buffer("inv_freq", 1.0 / (10000 ** (torch.arange(0, 16, 2).float() / 16)), persistent=False)
+
+    check_rotary(torch.nn.ModuleDict({"r": Modern()}))
