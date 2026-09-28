@@ -71,9 +71,21 @@ def _accepts_kw(tokenizer) -> bool:
         return True
 
 
-def _fingerprints(model) -> dict[str, tuple[float, float]]:
-    return {n: (float(p.detach().double().sum()), float(p.detach().double().abs().sum()))
-            for n, p in model.named_parameters()}
+def _fingerprints(model, chunk: int = 1 << 24) -> dict[str, tuple[float, float]]:
+    """(sum, abs-sum) per parameter, accumulated in float64 block by block:
+    never materialises a float64 copy of a whole tensor (a full .double() of the
+    8B embedding table needs 4.6 GB of GPU memory)."""
+    out = {}
+    for n, p in model.named_parameters():
+        flat = p.detach().reshape(-1)
+        s = a = 0.0
+        for block in flat.split(chunk):
+            b = block.to(torch.float64)
+            s += float(b.sum())
+            a += float(b.abs().sum())
+            del b
+        out[n] = (s, a)
+    return out
 
 
 def _dev_scored_rows(ctx: RunContext, dev: pd.DataFrame) -> pd.DataFrame:

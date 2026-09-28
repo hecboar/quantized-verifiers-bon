@@ -68,14 +68,17 @@ def _score_check(rep, v, spec, loader, qs, texts, device, dtype):
 
 def _gptq_check(rep, v, spec, loader, n_calib, device, dtype, generic_chunk):
     tok, model = loader(spec, device=device, dtype=dtype)
-    before = {n: float(p.detach().double().sum()) for n, p in model.named_parameters()}
+    from .runner import _fingerprints
+
+    before = _fingerprints(model)
     calib = build_recipe("generic", None, n_calib, 0, generic_texts_ids=generic_chunk(tok, 2 * n_calib))
     _sync(device)
     t0 = time.perf_counter()
     quantize_model(model, "gptq", 4, 32 if device == "cpu" else 128, calib=calib)
     _sync(device)
     secs = time.perf_counter() - t0
-    changed = {n for n, p in model.named_parameters() if float(p.detach().double().sum()) != before[n]}
+    after = _fingerprints(model)
+    changed = {n for n in before if before[n] != after[n]}
     targets = {f"{n}.weight" for n, _ in target_linears(model)}
     rep["quant_check"][v] = {"gptq_seconds": secs, "n_calib": n_calib, "audit_ok": changed == targets,
                              "per_calib_seq_seconds": secs / n_calib}

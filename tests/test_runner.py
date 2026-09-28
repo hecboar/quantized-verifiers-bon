@@ -216,3 +216,23 @@ def test_null_control_rescores_bf16_with_a_different_batch_layout(ctx, monkeypat
     execute_run(ScoreRun("G", "tiny", "bf16-null", "none", batch_tokens=40), ctx)
     assert seen[0] == ctx.max_tokens and seen[-1] == 40
     assert ctx.store.meta("scores", "G__tiny__bf16-null")["batch_tokens"] == 40
+
+
+def test_fingerprints_never_upcast_whole_tensors(monkeypatch):
+    """Phase 1 OOM: p.double() of the 8B embedding table allocated 4.6 GB on the GPU."""
+    import torch
+
+    from conftest import make_tiny_rm
+    from vq.runner import _fingerprints
+
+    model = make_tiny_rm(seed=9)
+    ref = {n: (float(p.detach().double().sum()), float(p.detach().double().abs().sum()))
+           for n, p in model.named_parameters()}
+
+    def boom(self, *a, **k):
+        raise AssertionError("whole-tensor .double() copy")
+
+    monkeypatch.setattr(torch.Tensor, "double", boom)
+    got = _fingerprints(model, chunk=1000)  # small chunks exercise the blocked path
+    for n in ref:
+        assert got[n] == pytest.approx(ref[n], rel=1e-9, abs=1e-9)
