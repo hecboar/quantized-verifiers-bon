@@ -48,10 +48,12 @@ def _env():
     return vals
 
 
-def _bundle() -> Path:
-    """Committed code (git archive, LF) + data manifests + current outputs."""
+def _bundle(tag: str) -> Path:
+    """Committed code (git archive, LF) + data manifests + current outputs. One
+    file per launch: parallel launches shared one path and one overwrote a
+    bundle while another was uploading it (corrupted tar on the pod)."""
     extras = ["data", "outputs/store", "outputs/frozen_lambda.json", "outputs/throughput.json", "outputs/packed"]
-    return bundle_code(ROOT, ROOT / "outputs" / "_bundle.tar.gz", extras)
+    return bundle_code(ROOT, ROOT / "outputs" / "bundles" / f"{tag}.tar.gz", extras)
 
 
 def _run(argv):
@@ -99,7 +101,7 @@ def cmd_launch(a):
         print(f"host check: {why}", flush=True)
         if not ok:
             raise BadHost(why)
-        bundle = _bundle()
+        bundle = _bundle(pid)
         _run(ssh_argv(ep, f"mkdir -p {REMOTE}", str(KEY)))
         _run(scp_argv(ep, str(bundle), f"{REMOTE}/bundle.tar.gz", str(KEY), upload=True))
         _run(ssh_argv(ep, f"cd {REMOTE} && tar xzf bundle.tar.gz && rm bundle.tar.gz", str(KEY)))
