@@ -588,3 +588,8 @@ def test_install_has_its_own_time_limit():
     while billing; the install gets its own cap and fails fast (exit 97)."""
     cmd = bootstrap_command("score --phase p", max_hours=4)
     assert "timeout -k 60 30m pip install" in cmd
+
+
+def test_install_cap_is_configurable():
+    """Phase 6 installs gptqmodel, which may compile CUDA extensions."""
+    assert "timeout -k 60 75m pip install" in bootstrap_command("phase6 --generator G", max_hours=6, install_minutes=75)

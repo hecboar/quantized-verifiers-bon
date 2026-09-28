@@ -217,3 +217,12 @@ rotary buffer is not sane. The affected PRM outputs are archived
 (`outputs/archive/prm_broken_rope/`) and not used; all PRM conditions are re-scored.
 The PRM is not part of the confirmatory family (c1, c4, c5 use the ORMs), so no
 registered test is affected.
+
+**2026-09-29 — exploratory additions after phase 3 (not confirmatory).** (i) `phase3b_bits`:
+bit-width / method dose-response for the ORMs (GPTQ-W3 for the 1.7B and 4B; RTN-W4 for
+1.7B/4B/8B; RTN-W8 for the 8B). (ii) The memory frontier (c2, registered) additionally
+includes the 1.7B at packed GPTQ-W4, which the original phase-6 list omitted; c2's
+definition is unchanged. (iii) Phase 5 (CH-GPTQ) is not run for now: by the decision rule
+of §7.5 it is permitted, but at the registered 4 bits the 8B shows no MATH damage to
+repair (ΔA(32) −0.2 pp); c3 therefore stays in the family with p = 1 unless run later.
+The second generator (phase 4) is run without its CH-GPTQ condition for the same reason.

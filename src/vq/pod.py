@@ -139,7 +139,7 @@ INSTALL_FETCH_HOURS = 5 / 60  # upload, fetch and delete after the grace period
 
 
 def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspace/vq", grace_minutes: int = 20,
-                      extras: str = "gpu") -> str:
+                      extras: str = "gpu", install_minutes: int = 30) -> str:
     """One CLI step on the pod. A single hard cap (with forced kill) bounds
     install + run; a failed install stops immediately (exit 97). Afterwards the
     pod stays up `grace_minutes` so `watch` can fetch outputs over SSH
@@ -148,7 +148,7 @@ def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspac
     if "'" in cli_args:
         raise ValueError("step arguments must not contain single quotes")
     minutes = int(round(max_hours * 60))
-    inner = (f". scripts/pod_env.sh; timeout -k 60 30m pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
+    inner = (f". scripts/pod_env.sh; timeout -k 60 {int(install_minutes)}m pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
              f"|| {{ echo 97 > /workspace/exit_code; exit 97; }}; "
              f"mkdir -p outputs/env; pip freeze > outputs/env/pip_freeze.txt 2>/dev/null; "
              f"nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv > outputs/env/gpu.csv 2>&1; "

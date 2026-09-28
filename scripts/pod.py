@@ -75,7 +75,8 @@ def cmd_launch(a):
                  "(run the phase-1 gate first, or pass --force deliberately)")
     spec = PodSpec(name=unique_pod_name(a.step), cloud_type=a.cloud,
                    env={"HF_TOKEN": env["HF_TOKEN"], "PUBLIC_KEY": pub.read_text().strip()})
-    cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras, grace_minutes=a.grace)
+    cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras, grace_minutes=a.grace,
+                            install_minutes=a.install_minutes)
     cap = billed_hours_cap(a.hours, a.grace)
     print(f"pod: {spec.gpu_type} ({spec.cloud_type}), image {spec.image}")
     print(f"step: python -m vq.cli {a.step}")
@@ -214,6 +215,7 @@ def main():
     s.add_argument("--grace", type=int, default=20, help="minutes the pod waits for `watch` before self-stopping")
     s.add_argument("--cloud", default="COMMUNITY", choices=["SECURE", "COMMUNITY"])
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
+    s.add_argument("--install-minutes", type=int, default=30, help="cap for pip install (phase 6: 75)")
     s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")
     s.add_argument("--watch", action="store_true", help="after launching, watch until done, fetch and delete")
     s.add_argument("--yes", action="store_true")

@@ -488,6 +488,35 @@ def cmd_score_deployed(args) -> None:
     print(execute_run(ScoreRun(args.generator, args.verifier, cond, "none"), ctx))
 
 
+def cmd_phase6(args) -> None:
+    """Phase 6 in one pod step: real deployments for the memory frontier. NF4
+    (bitsandbytes) scoring, packed GPTQ-W4 export + scoring, then the memory
+    benchmark; each step in a child process (frees VRAM). A failed step is
+    reported and the rest still run (a failed export skips its scoring)."""
+    import subprocess
+
+    def run(*a):
+        argv = [sys.executable, "-m", "vq.cli", *a, "--config", args.config]
+        rc = subprocess.run(argv, check=False).returncode
+        print(f"[phase6] {' '.join(a)}: {'ok' if rc == 0 else f'FAILED ({rc})'}", flush=True)
+        return rc == 0
+
+    failed = []
+    for v in filter(None, args.nf4.split(",")):
+        if not run("score-deployed", "--generator", args.generator, "--verifier", v, "--scheme", "nf4"):
+            failed.append(f"nf4:{v}")
+    for v in filter(None, args.gptq.split(",")):
+        if not run("export-packed", "--verifier", v):
+            failed.append(f"export:{v}")
+            continue
+        if not run("score-deployed", "--generator", args.generator, "--verifier", v, "--scheme", "gptq-w4"):
+            failed.append(f"gptq-w4:{v}")
+    if args.measure and not run("measure-memory", "--verifiers", args.measure):
+        failed.append("measure-memory")
+    if failed:
+        sys.exit(f"phase6 failed steps: {failed}")
+
+
 def cmd_parity(args) -> None:
     from .analysis import compare_conditions
 
@@ -592,6 +621,11 @@ def main(argv=None) -> None:
     sp.add_argument("--verifier", required=True)
     sp.add_argument("--generator", required=True)
     sp.add_argument("--scheme", choices=["nf4", "gptq-w4"], required=True)
+    sp = add("phase6", cmd_phase6)
+    sp.add_argument("--generator", required=True)
+    sp.add_argument("--nf4", default="", help="verifiers scored with bitsandbytes NF4")
+    sp.add_argument("--gptq", default="", help="verifiers exported + scored with packed GPTQ-W4")
+    sp.add_argument("--measure", default="", help="verifiers for the memory benchmark (empty: skip)")
     sp = add("parity", cmd_parity)
     sp.add_argument("--generator", required=True)
     sp.add_argument("--verifier", required=True)

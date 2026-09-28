@@ -63,3 +63,14 @@ def test_phase1_signal_runs(cfg):
     assert {(r.verifier, r.condition) for r in runs} == {
         (v, c) for v in ("sky-4b", "sky-8b") for c in ("bf16", "bf16-null", "nf4", "gptq-w4", "gptq-w3")}
     assert all(r.recipe in (None, "generic") for r in runs)  # no dev-calibrated method in the early signal
+
+
+def test_bits_curve_phase_is_exploratory_and_disjoint_from_phase3():
+    """Added after phase 3 (exploratory, preregistration §6): bit-width / method
+    dose-response for the three ORMs; no run duplicates a phase-3 run."""
+    cfg = load_config("configs/experiment.yaml")
+    bits = {(r.verifier, r.condition) for r in phase_runs(cfg, "phase3b_bits", generator="G")}
+    main = {(r.verifier, r.condition) for r in phase_runs(cfg, "phase3_main", generator="G")}
+    assert bits == {("sky-1.7b", "gptq-w3"), ("sky-4b", "gptq-w3"), ("sky-1.7b", "rtn-w4"),
+                    ("sky-4b", "rtn-w4"), ("sky-8b", "rtn-w4"), ("sky-8b", "rtn-w8")}
+    assert not bits & main

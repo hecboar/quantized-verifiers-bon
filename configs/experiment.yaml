@@ -88,6 +88,14 @@ phases:
     bits: 4
     recipes: [random, dpq, ch, ch_shuffled]
     seeds: {sky-8b: [0, 1, 2], sky-4b: [0, 1]}
+  phase3b_bits:                    # exploratory, added after phase 3 (preregistration §6)
+    runs:                          # bit-width / method dose-response for the ORMs
+      - {verifier: sky-1.7b, condition: gptq-w3}
+      - {verifier: sky-4b, condition: gptq-w3}
+      - {verifier: sky-1.7b, condition: rtn-w4}
+      - {verifier: sky-4b, condition: rtn-w4}
+      - {verifier: sky-8b, condition: rtn-w4}
+      - {verifier: sky-8b, condition: rtn-w8}
   dev_numeric_controls:
     runs:
       - {verifier: sky-4b, condition: rtn-w4}

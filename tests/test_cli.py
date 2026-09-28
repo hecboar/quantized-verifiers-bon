@@ -134,3 +134,27 @@ def test_extension_excludes_dev_texts_and_publishes_atomically(tmp_path):
     assert all(i.startswith("mathtest-y-") for i in ext)
     # published last: the extension manifest exists only once everything else is written
     assert (tmp_path / "manifest_eval_full.json").stat().st_mtime <= (tmp_path / "manifest_eval_mathext.json").stat().st_mtime
+
+
+def test_phase6_runs_each_deployment_step_in_a_child_process(monkeypatch, tmp_path):
+    """Phase 6 in one pod step: real NF4 (bitsandbytes) scoring, packed GPTQ export
+    + scoring, then the memory benchmark; each in its own process (VRAM freed),
+    failures collected so the other steps still run, non-zero exit at the end."""
+    import subprocess
+    import sys
+
+    calls = []
+
+    def fake_run(argv, check=False):
+        calls.append(argv[3:])
+        return subprocess.CompletedProcess(argv, 1 if "export-packed" in argv and "sky-8b" in argv else 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(SystemExit):
+        main(["phase6", "--generator", "G", "--nf4", "sky-1.7b", "--gptq", "sky-4b,sky-8b", "--measure",
+              "sky-1.7b,sky-4b,sky-8b"])
+    cmds = [c[0] for c in calls]
+    assert calls[0][:1] == ["score-deployed"] and "nf4" in calls[0]
+    assert cmds == ["score-deployed", "export-packed", "score-deployed", "export-packed", "measure-memory"]
+    assert all("--config" in c for c in calls)
+    assert calls[-1][calls[-1].index("--verifiers") + 1] == "sky-1.7b,sky-4b,sky-8b"
