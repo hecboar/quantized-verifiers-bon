@@ -501,3 +501,45 @@ def test_merge_quarantines_a_whole_campaign_on_any_conflict(tmp_path):
     assert not (dst / camp / "00001.parquet").exists()          # nothing of the conflicting campaign copied
     assert (dst / "store/scores/G__v__nf4.parquet").exists()     # unrelated campaign still merged
     assert "store/scores/G__v__bf16" in rep["quarantined"]
+
+
+def test_gpu_power_check_rejects_power_capped_hosts():
+    """A COMMUNITY 4090 capped at 150 W (default 450 W) ran at 855 MHz and scored
+    ~3x slower than the pilot host."""
+    from vq.pod import gpu_power_ok
+
+    ok, why = gpu_power_ok("150.00 W, 450.00 W\n")
+    assert not ok and "150" in why
+    assert gpu_power_ok("450.00 W, 450.00 W")[0]
+    assert gpu_power_ok("400.00 W, 450.00 W")[0]      # mild caps are fine
+    assert not gpu_power_ok("garbage")[0]             # unreadable -> reject
+
+
+def test_launch_retries_on_bad_host_and_deletes_it():
+    from vq.pod import BadHost, launch_pod
+
+    s = FakeSession()
+    c = RunPodClient("KEY", session=s)
+    tries = []
+
+    def setup(pod_id, ep):
+        tries.append(pod_id)
+        if len(tries) == 1:
+            raise BadHost("power capped")
+
+    pid = launch_pod(c, PodSpec(name="x"), setup, wait_s=0, poll_s=0)
+    assert pid == "pod123" and len(tries) == 2
+    assert sum(1 for m, *_ in s.calls if m == "DELETE") == 1
+
+
+def test_launch_gives_up_after_too_many_bad_hosts():
+    from vq.pod import BadHost, launch_pod
+
+    s = FakeSession()
+
+    def setup(pod_id, ep):
+        raise BadHost("power capped")
+
+    with pytest.raises(BadHost):
+        launch_pod(RunPodClient("KEY", session=s), PodSpec(name="x"), setup, wait_s=0, poll_s=0, max_bad_hosts=3)
+    assert sum(1 for m, *_ in s.calls if m == "DELETE") == 3

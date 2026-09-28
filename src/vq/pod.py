@@ -219,30 +219,58 @@ def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int 
             waited += max(retry_s, 1)
 
 
+class BadHost(RuntimeError):
+    """The pod's host is unfit (e.g. a power-capped GPU); delete it and try another."""
+
+
+GPU_POWER_QUERY = "nvidia-smi --query-gpu=power.limit,power.default_limit --format=csv,noheader"
+
+
+def gpu_power_ok(csv: str, min_frac: float = 0.8) -> tuple[bool, str]:
+    """`power.limit, power.default_limit` -> fit? A COMMUNITY 4090 capped at 150 W
+    of 450 W ran at 855 MHz and scored ~3x slower than the pilot host."""
+    try:
+        limit, default = (float(x.strip().split()[0]) for x in csv.strip().splitlines()[0].split(","))
+    except (ValueError, IndexError):
+        return False, f"unreadable GPU power query: {csv.strip()[:80]!r}"
+    if limit < min_frac * default:
+        return False, f"GPU power capped at {limit:.0f} W of {default:.0f} W"
+    return True, f"GPU power limit {limit:.0f} W of {default:.0f} W"
+
+
 def launch_pod(client: RunPodClient, spec: PodSpec, setup, wait_s: int = 900, poll_s: int = 10,
-               retry_s: int = 120, max_stock_wait_s: int = 6 * 3600) -> str:
-    """Create a pod and run `setup(pod_id, ssh_endpoint)` (upload + start the
-    step). Any failure before the step is running deletes the pod, so no GPU
-    is left billing without a self-stopping job."""
+               retry_s: int = 120, max_stock_wait_s: int = 6 * 3600, max_bad_hosts: int = 5) -> str:
+    """Create a pod and run `setup(pod_id, ssh_endpoint)` (host check, upload,
+    start the step). Any failure before the step is running deletes the pod, so
+    no GPU is left billing without a self-stopping job; a
+    `BadHost` from setup deletes it and tries another host."""
     import time
 
-    pod = create_pod_when_available(client, spec, retry_s=retry_s, max_wait_s=max_stock_wait_s)
-    pid = pod["id"]
-    try:
-        ep, waited = None, 0
-        while True:
-            ep = ssh_endpoint(client.get_pod(pid))
-            if ep or waited >= wait_s:
-                break
-            time.sleep(poll_s)
-            waited += max(poll_s, 1)
-        if not ep:
-            raise RuntimeError("SSH never became available")
-        setup(pid, ep)
-    except BaseException:
-        client.delete_pod(pid)
-        raise
-    return pid
+    for attempt in range(1, max_bad_hosts + 1):
+        pod = create_pod_when_available(client, spec, retry_s=retry_s, max_wait_s=max_stock_wait_s)
+        pid = pod["id"]
+        try:
+            ep, waited = None, 0
+            while True:
+                ep = ssh_endpoint(client.get_pod(pid))
+                if ep or waited >= wait_s:
+                    break
+                time.sleep(poll_s)
+                waited += max(poll_s, 1)
+            if not ep:
+                raise RuntimeError("SSH never became available")
+            setup(pid, ep)
+        except BadHost as e:
+            client.delete_pod(pid)
+            print(f"pod {pid} rejected ({e}); deleted, trying another host ({attempt}/{max_bad_hosts})", flush=True)
+            if attempt == max_bad_hosts:
+                raise
+            continue
+        except BaseException:
+            client.delete_pod(pid)
+            raise
+        return pid
+    raise AssertionError("unreachable")
 
 
 def parse_probe(raw: bytes | None) -> tuple[bool, list[str]]:

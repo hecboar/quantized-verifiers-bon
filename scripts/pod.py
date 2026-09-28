@@ -31,7 +31,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vq.pod import (PodSpec, RunPodClient, billed_hours_cap, bootstrap_command, gate_allows,  # noqa: E402
                     finish_pod, launch_pod, merge_outputs, remote_archive_command, remote_detached, requires_gate,
-                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur, parse_probe, bundle_code)
+                    scp_argv, ssh_argv, ssh_endpoint, unique_pod_name, hourly_eur, parse_probe, bundle_code,
+                    BadHost, GPU_POWER_QUERY, gpu_power_ok)
 
 KEY = Path.home() / ".ssh" / "id_ed25519"
 REMOTE = "/workspace/vq"
@@ -92,6 +93,11 @@ def cmd_launch(a):
         rec.write_text(json.dumps({"pod": pid, "step": a.step, "created": time.time(),
                                    "deadline": time.time() + cap * 3600}))
         time.sleep(20)  # sshd start-up
+        probe = subprocess.run(ssh_argv(ep, GPU_POWER_QUERY, str(KEY)), capture_output=True, text=True, timeout=120)
+        ok, why = gpu_power_ok(probe.stdout)
+        print(f"host check: {why}", flush=True)
+        if not ok:
+            raise BadHost(why)
         bundle = _bundle()
         _run(ssh_argv(ep, f"mkdir -p {REMOTE}", str(KEY)))
         _run(scp_argv(ep, str(bundle), f"{REMOTE}/bundle.tar.gz", str(KEY), upload=True))
