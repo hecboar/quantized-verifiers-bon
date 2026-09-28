@@ -211,6 +211,18 @@ def create_pod_when_available(client: RunPodClient, spec: PodSpec, retry_s: int 
             sleep(30)
             waited += 30
         except RuntimeError as e:
+            if NO_STOCK not in str(e) and "HTTP 5" in str(e):
+                # generic server error (seen live): the pod may exist anyway
+                existing = _find_pod_by_name(client, spec.name)
+                if existing is not None:
+                    print(f"server error but pod {existing['id']} exists: adopting it", flush=True)
+                    return existing
+                if waited >= max_wait_s:
+                    raise
+                print(f"RunPod server error creating the pod; retrying in 60s: {str(e)[:120]}", flush=True)
+                sleep(60)
+                waited += 60
+                continue
             if NO_STOCK not in str(e) or waited >= max_wait_s:
                 raise
             print(f"no {spec.gpu_type} available ({spec.cloud_type}); retrying in {retry_s}s "

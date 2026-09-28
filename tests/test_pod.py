@@ -543,3 +543,41 @@ def test_launch_gives_up_after_too_many_bad_hosts():
     with pytest.raises(BadHost):
         launch_pod(RunPodClient("KEY", session=s), PodSpec(name="x"), setup, wait_s=0, poll_s=0, max_bad_hosts=3)
     assert sum(1 for m, *_ in s.calls if m == "DELETE") == 3
+
+
+class Flaky5xxSession(FakeSession):
+    """POST /pods fails once with a generic 500 (seen live: 'Something went wrong')."""
+
+    def __init__(self, created_anyway=False):
+        super().__init__()
+        self.failed, self.created_anyway = False, created_anyway
+
+    def request(self, method, url, headers=None, json=None, timeout=None):
+        if method == "POST" and url.endswith("/pods") and not self.failed:
+            self.failed = True
+            self.calls.append((method, url, headers, json))
+            r = FakeResp(500, {})
+            r.text = '{"error":"create pod: Something went wrong. Please try again later.","status":500}'
+            return r
+        if method == "GET" and url.endswith("/pods"):
+            self.calls.append((method, url, headers, json))
+            return FakeResp(200, [{"id": "ghost1", "name": "x"}] if self.created_anyway else [])
+        return super().request(method, url, headers, json, timeout)
+
+
+def test_create_retries_generic_server_errors():
+    from vq.pod import create_pod_when_available
+
+    s = Flaky5xxSession()
+    pod = create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="x"), retry_s=0, max_wait_s=60,
+                                    sleep=lambda t: None)
+    assert pod["id"] == "pod123"
+
+
+def test_create_adopts_pod_created_behind_a_server_error():
+    from vq.pod import create_pod_when_available
+
+    s = Flaky5xxSession(created_anyway=True)
+    pod = create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="x"), retry_s=0, max_wait_s=60,
+                                    sleep=lambda t: None)
+    assert pod["id"] == "ghost1"
