@@ -121,7 +121,7 @@ def _fetch(client, pid):
         tar.extractall(snap, filter="data")  # pod-specific directory, never straight into outputs/
     rep = merge_outputs(snap / "outputs", ROOT / "outputs")
     (dst / "merge_report.json").write_text(json.dumps(rep, indent=1))
-    print(f"merged: {len(rep['copied'])} new, {len(rep['identical'])} identical, {len(rep['conflicts'])} conflicts")
+    print(f"merged: {len(rep['copied'])} new, {len(rep['updated'])} updated reports, {len(rep['identical'])} identical, {len(rep['conflicts'])} conflicts")
     for c in rep["conflicts"]:
         print(f"  CONFLICT kept local version: {c} (pod version in {snap})")
 

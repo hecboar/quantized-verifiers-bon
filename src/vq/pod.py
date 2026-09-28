@@ -334,8 +334,12 @@ def merge_outputs(src_root, dst_root) -> dict:
     import shutil
     from pathlib import Path
 
+    import fnmatch
+
+    # per-run reports: the pod's (newer) version replaces the local one
+    run_reports = ("pilot_*.json", "signal.json", "parity_*.json", "throughput.json")
     src_root, dst_root = Path(src_root), Path(dst_root)
-    rep = {"copied": [], "identical": [], "conflicts": []}
+    rep = {"copied": [], "identical": [], "updated": [], "conflicts": []}
     for f in sorted(p for p in src_root.rglob("*") if p.is_file()):
         rel = f.relative_to(src_root).as_posix()
         dst = dst_root / rel
@@ -345,7 +349,10 @@ def merge_outputs(src_root, dst_root) -> dict:
             rep["copied"].append(rel)
         elif filecmp.cmp(f, dst, shallow=False):
             rep["identical"].append(rel)
-        else:
+        elif any(fnmatch.fnmatch(rel, pat) for pat in run_reports):
+            shutil.copy2(f, dst)
+            rep["updated"].append(rel)
+        else:  # frozen settings and campaign data are never overwritten
             rep["conflicts"].append(rel)
     return rep
 

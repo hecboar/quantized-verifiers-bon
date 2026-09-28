@@ -443,3 +443,24 @@ def test_bundle_refuses_uncommitted_changes(tmp_path):
     (repo / "a.py").write_text("x = 2\n")
     with pytest.raises(RuntimeError, match="uncommitted"):
         bundle_code(repo, tmp_path / "b.tar.gz", extras=[])
+
+
+def test_merge_updates_run_reports_but_never_frozen_files(tmp_path):
+    """The chain read a stale local pilot report (merge kept it on conflict)."""
+    from vq.pod import merge_outputs
+
+    src, dst = tmp_path / "pod", tmp_path / "local"
+    for d in (src, dst):
+        d.mkdir()
+    (src / "pilot_G.json").write_text('{"ok": true}')
+    (dst / "pilot_G.json").write_text('{"ok": false}')
+    (src / "signal.json").write_text("new")
+    (dst / "signal.json").write_text("old")
+    (src / "frozen_lambda.json").write_text('{"sky-4b": 0.5}')
+    (dst / "frozen_lambda.json").write_text('{"sky-4b": 2.0}')
+    rep = merge_outputs(src, dst)
+    assert (dst / "pilot_G.json").read_text() == '{"ok": true}'
+    assert (dst / "signal.json").read_text() == "new"
+    assert sorted(rep["updated"]) == ["pilot_G.json", "signal.json"]
+    assert rep["conflicts"] == ["frozen_lambda.json"]
+    assert (dst / "frozen_lambda.json").read_text() == '{"sky-4b": 2.0}'
