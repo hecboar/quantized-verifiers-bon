@@ -20,7 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # flash-attn is deliberately absent: it compiles from source on the pod (paid time); SDPA is used
-gpu = ["vllm>=0.8", "bitsandbytes>=0.45"]
+# vllm pinned to the version validated by the pilot (it pins torch==2.13.0, CUDA 13.0)
+gpu = ["vllm==0.30.0", "bitsandbytes>=0.45"]
 # only for phase 6 (packed GPTQ kernels); may compile CUDA extensions
 packed = ["gptqmodel>=2.0", "optimum>=1.24"]
 dev = ["pytest>=8", "bitsandbytes>=0.45"]  # bnb: CPU parity test for NF4

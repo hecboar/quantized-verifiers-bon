@@ -464,3 +464,20 @@ def test_merge_updates_run_reports_but_never_frozen_files(tmp_path):
     assert sorted(rep["updated"]) == ["pilot_G.json", "signal.json"]
     assert rep["conflicts"] == ["frozen_lambda.json"]
     assert (dst / "frozen_lambda.json").read_text() == '{"sky-4b": 2.0}'
+
+
+def test_host_cuda_matches_the_pinned_stack():
+    """vllm==0.30.0 pins torch==2.13.0, built for CUDA 13.0: a host whose driver
+    only supports CUDA 12.8 failed phase 1 ("NVIDIA driver too old")."""
+    from pathlib import Path
+
+    assert PodSpec(name="x").body()["allowedCudaVersions"] == ["13.0"]
+    pyproject = (Path(__file__).parents[1] / "pyproject.toml").read_text()
+    assert '"vllm==0.30.0"' in pyproject  # the version validated by the pilot, never "latest"
+
+
+def test_bootstrap_records_the_software_environment():
+    cmd = bootstrap_command("phase1 --generator G", max_hours=3)
+    assert "pip freeze > outputs/env/pip_freeze.txt" in cmd
+    assert "nvidia-smi" in cmd
+    assert cmd.index("pip freeze") < cmd.index("python -m vq.cli")

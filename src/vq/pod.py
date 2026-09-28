@@ -50,6 +50,8 @@ class PodSpec:
             "minRAMPerGPU": 24,
             "minVCPUPerGPU": 4,
             "minDownloadMbps": 200,
+            # vllm==0.30.0 -> torch==2.13.0 (CUDA 13.0): the host driver must support 13.0
+            "allowedCudaVersions": ["13.0"],
             "env": {**self.CACHE_ENV, **self.env},
         }
 
@@ -148,6 +150,8 @@ def bootstrap_command(cli_args: str, max_hours: float, workdir: str = "/workspac
     minutes = int(round(max_hours * 60))
     inner = (f". scripts/pod_env.sh; pip install -q -e \".[{extras}]\" > /workspace/pip.log 2>&1 "
              f"|| {{ echo 97 > /workspace/exit_code; exit 97; }}; "
+             f"mkdir -p outputs/env; pip freeze > outputs/env/pip_freeze.txt 2>/dev/null; "
+             f"nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv > outputs/env/gpu.csv 2>&1; "
              f"python -m vq.cli {cli_args} > /workspace/run.log 2>&1; echo $? > /workspace/exit_code")
     return (
         f"cd {workdir} && "
@@ -337,7 +341,7 @@ def merge_outputs(src_root, dst_root) -> dict:
     import fnmatch
 
     # per-run reports: the pod's (newer) version replaces the local one
-    run_reports = ("pilot_*.json", "signal.json", "parity_*.json", "throughput.json")
+    run_reports = ("pilot_*.json", "signal.json", "parity_*.json", "throughput.json", "env/*")
     src_root, dst_root = Path(src_root), Path(dst_root)
     rep = {"copied": [], "identical": [], "updated": [], "conflicts": []}
     for f in sorted(p for p in src_root.rglob("*") if p.is_file()):
