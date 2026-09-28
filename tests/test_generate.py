@@ -142,3 +142,17 @@ def test_vllm_context_is_capped_to_what_generation_needs(tmp_path, monkeypatch):
     items = [Item("q0", "?", "1", "numeric", "gsm8k-test")]
     generate_pool("m", items, CampaignStore(tmp_path), "G__eval", seeds=(0,), per_seed=2, max_tokens=1024)
     assert seen["max_model_len"] == 4096 and seen["max_model_len"] >= 1024 + 1024
+
+
+def test_instruction_repeated_in_user_turn_for_llama_only():
+    """Llama-3.2 ignored the system-prompt \boxed{} instruction (34% unparseable in
+    phase 2); documented deviation in docs/preregistration.md."""
+    from vq.generate import GEN_SYSTEM, INSTRUCTION_IN_USER, build_prompt
+
+    tok = FakeTok()
+    plain = build_prompt(tok, "What is 2+2?")
+    llama = build_prompt(tok, "What is 2+2?", instruction_in_user=True)
+    assert plain.count(GEN_SYSTEM) == 1
+    user_part = llama.split("|user:")[1]
+    assert "What is 2+2?" in user_part and GEN_SYSTEM in user_part
+    assert INSTRUCTION_IN_USER == {"llama3.2-3b": True}

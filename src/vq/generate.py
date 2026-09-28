@@ -19,8 +19,14 @@ GENERATORS = {
 }
 
 
-def build_prompt(tokenizer, question: str) -> str:
-    msgs = [{"role": "system", "content": GEN_SYSTEM}, {"role": "user", "content": question}]
+# generators that ignore the system-prompt format instruction get it repeated in
+# the user turn (Llama-3.2: 34% unparseable answers otherwise; see preregistration §6)
+INSTRUCTION_IN_USER = {"llama3.2-3b": True}
+
+
+def build_prompt(tokenizer, question: str, instruction_in_user: bool = False) -> str:
+    user = question + "\n\n" + GEN_SYSTEM if instruction_in_user else question
+    msgs = [{"role": "system", "content": GEN_SYSTEM}, {"role": "user", "content": user}]
     return tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
 
 
@@ -114,6 +120,7 @@ def generate_pool(
     gpu_memory_utilization: float = 0.9,
     meta: dict | None = None,
     max_model_len: int = 4096,
+    instruction_in_user: bool = False,
 ) -> pd.DataFrame:
     """GPU only (vLLM). Resumable per seed via generate_seeds."""
     from vllm import LLM, SamplingParams
@@ -124,7 +131,7 @@ def generate_pool(
     llm = LLM(model=model_id, dtype="bfloat16", seed=0, gpu_memory_utilization=gpu_memory_utilization,
               max_model_len=max_model_len)
     tok = llm.get_tokenizer()
-    prompts = [build_prompt(tok, it.question) for it in items]
+    prompts = [build_prompt(tok, it.question, instruction_in_user) for it in items]
 
     def one_seed(seed: int) -> pd.DataFrame:
         sp = SamplingParams(n=per_seed, temperature=temperature, top_p=top_p, max_tokens=max_tokens, seed=seed)

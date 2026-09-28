@@ -81,3 +81,13 @@ relative to the BF16 null control (`bf16-null`).
 
 Any further change to the evaluation set, the estimands or the analysis after this
 commit will be recorded in this file with its date and reason.
+
+**2026-09-28 — secondary-generator prompt (before any evaluation scoring).** The first
+phase-2 pools of Llama-3.2-3B-Instruct left 34.4% of candidates without an extractable
+final answer (only 3.8% truncated): the model ignored the system-prompt instruction to
+answer in `oxed{}` and answered in prose (e.g. "So, Katy used 42 teaspoons of sugar.").
+The grader was left unchanged (it still rejects "last number in the text"). Instead, for
+Llama-3.2 only, the same instruction is repeated at the end of the user turn
+(`vq.generate.INSTRUCTION_IN_USER`), and its 300-question pools are regenerated. The
+first pools are archived, not used. The primary generator (Qwen2.5-1.5B-Instruct, 88.7%
+extractable) is unchanged. No verifier had scored any evaluation candidate at this point.

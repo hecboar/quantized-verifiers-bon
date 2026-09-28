@@ -206,7 +206,7 @@ def _load_env():
 # ------------------------------------------------------------- generation
 def cmd_generate(args) -> None:
     from .experiment import load_config
-    from .generate import GENERATORS, generate_pool
+    from .generate import GENERATORS, INSTRUCTION_IN_USER, generate_pool
 
     cfg, items, store = load_config(args.config), _items(), _store()
     g = cfg["generation"]
@@ -222,7 +222,9 @@ def cmd_generate(args) -> None:
         return
     generate_pool(GENERATORS[args.generator], [items[i] for i in ids], store, name, tuple(g["seeds"]),
                   g["per_seed"], g["temperature"], g["top_p"], g["max_tokens"],
-                  meta={"generator": args.generator, "split": args.split, **g})
+                  meta={"generator": args.generator, "split": args.split, **g,
+                        "instruction_in_user": INSTRUCTION_IN_USER.get(args.generator, False)},
+                  instruction_in_user=INSTRUCTION_IN_USER.get(args.generator, False))
 
 
 def cmd_annotate(args) -> None:
