@@ -12,6 +12,9 @@ data:
   dev_scored_per_condition: 100     # dev questions scored under every condition (C3, gate)
   gen2_subset: 300                  # eval questions for the second generator
   gate_questions: 100               # dev questions used by the phase-1 gate
+  # preregistered 2026-09-28 (docs/preregistration.md), before eval generation:
+  eval_extension: {math_test: 800}  # MATH test problems outside MATH500
+  eval_manifest: eval_full          # manifest used to generate/score evaluation pools
 
 generation:
   candidates_per_question: 32

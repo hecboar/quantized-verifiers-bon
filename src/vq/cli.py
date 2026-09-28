@@ -68,13 +68,45 @@ def prepare_data(cfg: dict, loaders: dict, outdir: Path) -> None:
     save_items(ev_items + dev_items, outdir / "items.jsonl")
 
 
+def extend_math_eval(cfg: dict, loaders: dict, outdir: Path) -> None:
+    """Preregistered on 2026-09-28 (docs/preregistration.md), before any
+    evaluation candidate was generated: +N MATH test problems outside MATH500,
+    where the phase-1 dev signal located the quantization damage. The frozen
+    manifest_eval.json is left untouched; manifest_eval_full.json = eval + ext."""
+    from .data import _hash_ids, load_items, make_manifest, norm_text, save_items, save_manifest
+
+    outdir = Path(outdir)
+    if (outdir / "manifest_eval_mathext.json").exists():
+        raise FileExistsError("MATH extension already frozen")
+    n = cfg["data"]["eval_extension"]["math_test"]
+    seed = cfg["seeds"]["manifest"] + 3
+    math500_texts = {norm_text(it.question) for it in loaders["math500"]()}
+    pool = [it for it in loaders["math_test"]() if norm_text(it.question) not in math500_texts]
+    ext = make_manifest(pool, n, seed, "eval_mathext")
+    save_manifest(ext, outdir / "manifest_eval_mathext.json")
+    base = json.loads((outdir / "manifest_eval.json").read_text())["ids"]
+    full_ids = sorted(set(base) | set(ext["ids"]))
+    save_manifest({"name": "eval_full", "seed": None, "n": len(full_ids), "ids": full_ids,
+                   "sha256": _hash_ids(full_ids), "parts": ["eval", "eval_mathext"]},
+                  outdir / "manifest_eval_full.json")
+    by_id = {it.id: it for it in pool}
+    items = load_items(outdir / "items.jsonl")
+    known = {it.id for it in items}
+    save_items(items + [by_id[i] for i in ext["ids"] if i not in known], outdir / "items.jsonl")
+
+
+def eval_manifest_for(cfg: dict, split: str) -> str:
+    """The evaluation pools are generated from the preregistered full manifest."""
+    return cfg["data"].get("eval_manifest", "eval") if split == "eval" else split
+
+
 # ------------------------------------------------------------------- plan
 def plan_campaigns(cfg: dict, generator: str, tp: dict):
     from .budget import Campaign
     from .experiment import phase_runs
 
     d = cfg["data"]
-    n_eval = sum(d["eval"].values())
+    n_eval = sum(d["eval"].values()) + sum(d.get("eval_extension", {}).values())
     C = cfg["generation"]["candidates_per_question"]
     seqs_run = (n_eval + d["dev_scored_per_condition"]) * C
     seqs_gen2 = (d["gen2_subset"] + d["dev_scored_per_condition"]) * C
@@ -178,7 +210,8 @@ def cmd_generate(args) -> None:
 
     cfg, items, store = load_config(args.config), _items(), _store()
     g = cfg["generation"]
-    ids = _manifest(args.split)[: args.limit] if args.limit else _manifest(args.split)
+    manifest = eval_manifest_for(cfg, args.split)
+    ids = _manifest(manifest)[: args.limit] if args.limit else _manifest(manifest)
     # the secondary generator's gen2 subset plays the role of its evaluation pools
     split_name = "eval" if args.split == "gen2" else args.split
     name = args.name or (f"{args.generator}__{split_name}" + (f"-pilot{args.limit}" if args.limit else ""))
@@ -464,6 +497,10 @@ def main(argv=None) -> None:
         sp.set_defaults(fn=fn)
         return sp
 
+    add("extend-math", lambda a: extend_math_eval(
+        __import__("vq.experiment", fromlist=["x"]).load_config(a.config),
+        {"math_test": __import__("vq.data", fromlist=["x"]).load_math_test,
+         "math500": __import__("vq.data", fromlist=["x"]).load_math500}, DATA))
     add("prepare-data", lambda a: prepare_data(__import__("vq.experiment", fromlist=["x"]).load_config(a.config),
                                                default_loaders(), DATA))
     sp = add("plan", cmd_plan)

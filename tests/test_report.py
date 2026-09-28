@@ -115,3 +115,41 @@ def test_frontier_uses_deployment_scores_and_skips_failed_measurements(tmp_path)
     fr = pd.read_csv(out / "frontier.csv")
     assert fr.loc[fr.ceiling_gb == 6, "best_any"].item() == "sky-8b__gptq-w4-packed"
     assert "sky-4b__gptq-w4" not in set(fr["best_any"])
+
+
+def _mk_domains(tmp_path, Q=400, C=32):
+    """GSM8K questions are robust; MATH questions have near-ties that gptq-w4 flips."""
+    rng = np.random.default_rng(3)
+    st = CampaignStore(tmp_path / "store")
+    cands, rows = [], {"bf16": [], "gptq-w4": []}
+    for q in range(Q):
+        qid = f"gsm8k-test-{q}" if q < Q // 2 else f"mathtest-algebra-{q}"
+        corr = rng.random(C) < 0.5
+        # MATH: a real but modest verifier signal that heavy quantization noise
+        # destroys most at large N (the max over many noisy candidates)
+        base = rng.normal(size=C) + (3.0 if qid.startswith("gsm8k") else 1.0) * corr
+        noise = (0.05 if qid.startswith("gsm8k") else 3.0) * rng.normal(size=C)
+        for c in range(C):
+            cands.append({"question_id": qid, "cand": c, "correct": bool(corr[c]), "answer_key": c % 3})
+            rows["bf16"].append({"split": "eval", "question_id": qid, "cand": c, "score": base[c]})
+            rows["gptq-w4"].append({"split": "eval", "question_id": qid, "cand": c, "score": base[c] + noise[c]})
+    st.write("candidates", "G__eval", pd.DataFrame(cands))
+    for v in ("sky-4b", "sky-8b"):
+        for cond, r in rows.items():
+            st.write("scores", f"G__{v}__{cond}", pd.DataFrame(r))
+    return st
+
+
+def test_preregistered_difficulty_and_scaling_contrasts(tmp_path):
+    st = _mk_domains(tmp_path)
+    out = tmp_path / "tables"
+    write_report(st, "G", out, budgets=[4, 32], repeats=30, n_boot=500)
+    conf = json.loads((out / "confirmatory.json").read_text())
+    assert set(conf) == {"c1_delta_8b_gptq_w4", "c2_memory_frontier", "c3_ch_vs_dpq",
+                         "c4_math_delta_gptq_w4_n32", "c5_math_growth_with_n_gptq_w4"}
+    assert conf["c4_math_delta_gptq_w4_n32"]["estimate"] < 0
+    assert conf["c5_math_growth_with_n_gptq_w4"]["estimate"] < 0
+    assert all("p_holm" in conf[k] for k in conf)
+    dom = pd.read_csv(out / "by_domain.csv")
+    assert {"verifier", "condition", "domain", "N", "delta", "delta_lo", "delta_hi"} <= set(dom.columns)
+    assert set(dom["domain"]) == {"gsm8k", "math"}

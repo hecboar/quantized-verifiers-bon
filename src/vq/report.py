@@ -24,8 +24,16 @@ from .stats import holm, paired_bootstrap
 from .store import CampaignStore
 
 SKIP_PREFIXES = ("dev-full", "lamsel-", "devsub-")
-# plan §6: the three pre-registered confirmatory contrasts (fixed family for Holm)
-CONFIRMATORY = ("c1_delta_8b_gptq_w4", "c2_memory_frontier", "c3_ch_vs_dpq")
+# plan §6 + docs/preregistration.md (c4, c5 added 2026-09-28, before eval generation):
+# fixed family for Holm
+CONFIRMATORY = ("c1_delta_8b_gptq_w4", "c2_memory_frontier", "c3_ch_vs_dpq",
+                "c4_math_delta_gptq_w4_n32", "c5_math_growth_with_n_gptq_w4")
+PREREG_VERIFIERS = ("sky-4b", "sky-8b")
+PREREG_LOW_N, PREREG_HIGH_N = 4, 32
+
+
+def domain_of(question_id: str) -> str:
+    return "gsm8k" if question_id.startswith("gsm8k") else "math"
 # memory measurement -> score condition of the *same* deployment
 DEPLOYMENT = {"bf16": "bf16", "gptq-w4": "gptq-w4-packed", "nf4": "nf4-bnb"}
 
@@ -65,12 +73,17 @@ def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1,
     conds = _conditions(store, generator)
     main_rows, ctrl_rows, c3_rows = [], [], []
     per_q_top: dict[tuple[str, str], np.ndarray] = {}
+    per_q_delta: dict[tuple[str, str, int], np.ndarray] = {}  # acc_q - acc_ref per question
+    qids_by_v: dict[str, list[str]] = {}
+    dom_rows = []
     temps = {}
 
     for v, cs in sorted(conds.items()):
         if "bf16" not in cs:
             continue
-        ref, correct, _, _ = score_matrix(store, generator, v, "bf16", "eval")
+        ref, correct, _, qids = score_matrix(store, generator, v, "bf16", "eval")
+        qids_by_v[v] = qids
+        doms = np.array([domain_of(q) for q in qids])
         C = ref.shape[1]
         n_top = max(n for n in budgets if n <= C)
         T, table = _vote_temperature(store, generator, v, tiebreak_seed)
@@ -79,6 +92,15 @@ def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1,
             m = condition_metrics(store, generator, v, c, budgets=budgets, repeats=repeats, seed=seed,
                                   vote_temperature=T, tiebreak_seed=tiebreak_seed)
             for n, r in m.items():
+                per_q_delta[(v, c, n)] = r["acc_q"] - r["acc_ref"]
+                if c != "bf16":
+                    for d in ("gsm8k", "math"):
+                        sel = doms == d
+                        if sel.any():
+                            db = paired_bootstrap({"x": per_q_delta[(v, c, n)][sel]}, lambda x: x["x"], n_boot, seed)
+                            dom_rows.append({"verifier": v, "condition": c, "domain": d, "N": n,
+                                             "n_questions": int(sel.sum()), "acc_ref": r["acc_ref"][sel].mean(),
+                                             "delta": db["estimate"], "delta_lo": db["ci_low"], "delta_hi": db["ci_high"]})
                 bs = paired_bootstrap({"a": r["acc_q"], "b": r["acc_ref"]}, lambda d: d["a"] - d["b"], n_boot, seed)
                 main_rows.append({
                     "verifier": v, "condition": c, "N": n, "acc_ref": r["acc_ref"].mean(), "acc_q": r["acc_q"].mean(),
@@ -113,6 +135,7 @@ def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1,
     pd.DataFrame(main_rows).to_csv(outdir / "main.csv", index=False)
     pd.DataFrame(ctrl_rows).to_csv(outdir / "controls.csv", index=False)
     pd.DataFrame(c3_rows).to_csv(outdir / "c3.csv", index=False)
+    pd.DataFrame(dom_rows).to_csv(outdir / "by_domain.csv", index=False)
     (outdir / "vote_temperatures.json").write_text(json.dumps(temps, indent=1))
 
     # ------------------------------- confirmatory family: always three tests
@@ -137,6 +160,20 @@ def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1,
         contrasts["c3_ch_vs_dpq"] = np.mean(ch_diffs, axis=0)
     else:
         missing["c3_ch_vs_dpq"] = "missing: matched CH/DPQ seed sets required for both ORMs (" + "; ".join(why) + ")"
+
+    # c4 / c5 (preregistered): MATH questions, gptq-w4, averaged over sky-4b and sky-8b
+    have = all((v, "gptq-w4", n) in per_q_delta for v in PREREG_VERIFIERS for n in (PREREG_LOW_N, PREREG_HIGH_N))
+    same_q = have and len({tuple(qids_by_v[v]) for v in PREREG_VERIFIERS}) == 1
+    if have and same_q:
+        math = np.array([domain_of(q) == "math" for q in qids_by_v[PREREG_VERIFIERS[0]]])
+        hi = np.mean([per_q_delta[(v, "gptq-w4", PREREG_HIGH_N)][math] for v in PREREG_VERIFIERS], axis=0)
+        lo = np.mean([per_q_delta[(v, "gptq-w4", PREREG_LOW_N)][math] for v in PREREG_VERIFIERS], axis=0)
+        contrasts["c4_math_delta_gptq_w4_n32"] = hi
+        contrasts["c5_math_growth_with_n_gptq_w4"] = hi - lo
+    else:
+        why = "missing: gptq-w4 at N=4 and N=32 for sky-4b and sky-8b on the same questions"
+        missing["c4_math_delta_gptq_w4_n32"] = why
+        missing["c5_math_growth_with_n_gptq_w4"] = why
 
     c2_note = "outputs/memory.json not found"
     if Path(memory_path).exists():

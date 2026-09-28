@@ -98,3 +98,22 @@ def load_math_train() -> list[Item]:
             if gold:
                 out.append(Item(f"mathtrain-{subj}-{i}", r["problem"], gold, "math", "math-train"))
     return out
+
+
+def load_math_test() -> list[Item]:
+    """MATH test split (all subjects). MATH500 is a subset of it: callers must
+    exclude MATH500 problems (by text) when sampling extra evaluation items."""
+    from datasets import load_dataset
+
+    out = []
+    for subj in MATH_SUBJECTS:
+        ds = load_dataset("EleutherAI/hendrycks_math", subj, split="test", token=_token())
+        for i, r in enumerate(ds):
+            gold = extract_boxed(r["solution"])
+            if gold:
+                out.append(Item(f"mathtest-{subj}-{i}", r["problem"], gold, "math", "math-test"))
+    return out
+
+
+def norm_text(s: str) -> str:
+    return " ".join(s.split())

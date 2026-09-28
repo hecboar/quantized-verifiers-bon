@@ -2,7 +2,8 @@
 
 Code for the study of weight-quantized reward models / verifiers in Best-of-N
 mathematical answer selection, the memory-budgeted frontier, and
-Contrastive-Hessian GPTQ (CH-GPTQ). Design: `plan-neurocomputing.md`.
+Contrastive-Hessian GPTQ (CH-GPTQ). Design: `plan-neurocomputing.md`;
+confirmatory hypotheses and the evaluation-set extension: `docs/preregistration.md`.
 
 ## Layout
 
