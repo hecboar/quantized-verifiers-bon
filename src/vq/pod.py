@@ -330,34 +330,63 @@ def gate_allows(gate_file) -> bool:
         return False
 
 
+def _campaign_key(rel: str) -> str | None:
+    """store/<kind>/<name>.parquet|.json|.shards/... -> store/<kind>/<name>"""
+    parts = rel.split("/")
+    if len(parts) >= 3 and parts[0] == "store":
+        name = parts[2]
+        for suf in (".shards", ".parquet", ".json"):
+            if name.endswith(suf):
+                name = name[: -len(suf)]
+                break
+        return "/".join(parts[:2] + [name])
+    return None
+
+
 def merge_outputs(src_root, dst_root) -> dict:
-    """Merge a pod's outputs into the local tree: copy new files, skip
-    identical ones, and never overwrite a differing local file (conflicts are
-    reported; frozen settings such as frozen_lambda.json are never replaced)."""
+    """Merge a pod's outputs into the local tree. Per-run reports are updated;
+    other files are copied only when new or identical. A campaign (all files of
+    store/<kind>/<name>) with ANY conflicting file is quarantined as a unit, so
+    remote shards never land next to an incompatible local fingerprint."""
     import filecmp
+    import fnmatch
     import shutil
     from pathlib import Path
 
-    import fnmatch
-
-    # per-run reports: the pod's (newer) version replaces the local one
     run_reports = ("pilot_*.json", "signal.json", "parity_*.json", "throughput.json", "env/*")
     src_root, dst_root = Path(src_root), Path(dst_root)
-    rep = {"copied": [], "identical": [], "updated": [], "conflicts": []}
-    for f in sorted(p for p in src_root.rglob("*") if p.is_file()):
+    rep = {"copied": [], "identical": [], "updated": [], "conflicts": [], "quarantined": []}
+    files = sorted(p for p in src_root.rglob("*") if p.is_file())
+    status = {}
+    for f in files:
         rel = f.relative_to(src_root).as_posix()
         dst = dst_root / rel
         if not dst.exists():
+            status[rel] = "new"
+        elif filecmp.cmp(f, dst, shallow=False):
+            status[rel] = "identical"
+        elif any(fnmatch.fnmatch(rel, pat) for pat in run_reports):
+            status[rel] = "update"
+        else:
+            status[rel] = "conflict"
+    bad = {_campaign_key(r) for r, st in status.items() if st == "conflict" and _campaign_key(r)}
+    rep["quarantined"] = sorted(bad)
+    for f in files:
+        rel = f.relative_to(src_root).as_posix()
+        st, dst = status[rel], dst_root / rel
+        if st == "conflict":
+            rep["conflicts"].append(rel)
+        elif _campaign_key(rel) in bad:
+            continue  # part of a quarantined campaign: left in the pod snapshot only
+        elif st == "new":
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, dst)
             rep["copied"].append(rel)
-        elif filecmp.cmp(f, dst, shallow=False):
+        elif st == "identical":
             rep["identical"].append(rel)
-        elif any(fnmatch.fnmatch(rel, pat) for pat in run_reports):
+        else:
             shutil.copy2(f, dst)
             rep["updated"].append(rel)
-        else:  # frozen settings and campaign data are never overwritten
-            rep["conflicts"].append(rel)
     return rep
 
 

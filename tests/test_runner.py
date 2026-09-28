@@ -236,3 +236,45 @@ def test_fingerprints_never_upcast_whole_tensors(monkeypatch):
     got = _fingerprints(model, chunk=1000)  # small chunks exercise the blocked path
     for n in ref:
         assert got[n] == pytest.approx(ref[n], rel=1e-9, abs=1e-9)
+
+
+def test_fingerprint_covers_question_text(ctx):
+    """scoring uses ctx.questions; changing them must invalidate reuse."""
+    run = ScoreRun("G", "tiny", "bf16", "none")
+    execute_run(run, ctx)
+    ctx.questions = {k: v + " (edited)" for k, v in ctx.questions.items()}
+    with pytest.raises(RuntimeError, match="fingerprint"):
+        execute_run(run, ctx)
+
+
+def test_legacy_v1_fingerprint_is_still_accepted_when_it_matches(ctx):
+    """Phase-1 campaigns were stored with the v1 fingerprint only: they must be
+    reusable (not recomputed, not rejected) when their v1 identity matches."""
+    import json
+
+    run = ScoreRun("G", "tiny", "bf16", "none")
+    execute_run(run, ctx)
+    meta_path = ctx.store._path("scores", run.name).with_suffix(".json")
+    meta = json.loads(meta_path.read_text())
+    meta.pop("fingerprint_v2")
+    meta_path.write_text(json.dumps(meta))
+    assert execute_run(run, ctx) == "skipped"
+
+
+def test_eval_pool_must_match_the_expected_manifest(ctx):
+    """scoring an incomplete/old eval pool must fail, not pass silently."""
+    ctx.expected_eval_ids = {"G": {f"e{q}" for q in range(13)}}  # one question more than the pool
+    with pytest.raises(ValueError, match="manifest"):
+        execute_run(ScoreRun("G", "tiny", "bf16", "none"), ctx)
+
+
+def test_quantized_run_with_no_targets_is_refused(ctx, monkeypatch):
+    """the audit must stop the run, not only record the failure."""
+    import vq.quant.apply as qa
+    import vq.runner as r
+
+    monkeypatch.setattr(qa, "target_linears", lambda model: [])
+    monkeypatch.setattr(r, "target_linears", lambda model: [])
+    with pytest.raises(RuntimeError, match="audit"):
+        execute_run(ScoreRun("G", "tiny", "rtn-w4", "rtn", 4, 32), ctx)
+    assert not ctx.store.done("scores", "G__tiny__rtn-w4")

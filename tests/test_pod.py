@@ -481,3 +481,23 @@ def test_bootstrap_records_the_software_environment():
     assert "pip freeze > outputs/env/pip_freeze.txt" in cmd
     assert "nvidia-smi" in cmd
     assert cmd.index("pip freeze") < cmd.index("python -m vq.cli")
+
+
+def test_merge_quarantines_a_whole_campaign_on_any_conflict(tmp_path):
+    """new remote shards must not be copied into a local campaign
+    whose fingerprint (or any other file) conflicts."""
+    from vq.pod import merge_outputs
+
+    src, dst = tmp_path / "pod", tmp_path / "local"
+    camp = "store/scores/G__v__bf16.shards"
+    (src / camp).mkdir(parents=True)
+    (dst / camp).mkdir(parents=True)
+    (src / camp / "_fingerprint.txt").write_text("remote")
+    (dst / camp / "_fingerprint.txt").write_text("local")
+    (src / camp / "00001.parquet").write_bytes(b"new shard")
+    (src / "store/scores").mkdir(parents=True, exist_ok=True)
+    (src / "store/scores/G__v__nf4.parquet").write_bytes(b"clean")
+    rep = merge_outputs(src, dst)
+    assert not (dst / camp / "00001.parquet").exists()          # nothing of the conflicting campaign copied
+    assert (dst / "store/scores/G__v__nf4.parquet").exists()     # unrelated campaign still merged
+    assert "store/scores/G__v__bf16" in rep["quarantined"]

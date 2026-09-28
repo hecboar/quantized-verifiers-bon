@@ -80,10 +80,12 @@ def extend_math_eval(cfg: dict, loaders: dict, outdir: Path) -> None:
         raise FileExistsError("MATH extension already frozen")
     n = cfg["data"]["eval_extension"]["math_test"]
     seed = cfg["seeds"]["manifest"] + 3
-    math500_texts = {norm_text(it.question) for it in loaders["math500"]()}
-    pool = [it for it in loaders["math_test"]() if norm_text(it.question) not in math500_texts]
+    items_now = {it.id: it for it in load_items(outdir / "items.jsonl")}
+    dev_ids = json.loads((outdir / "manifest_dev.json").read_text())["ids"]
+    excluded = {norm_text(it.question) for it in loaders["math500"]()}
+    excluded |= {norm_text(items_now[i].question) for i in dev_ids if i in items_now}  # never a dev problem
+    pool = [it for it in loaders["math_test"]() if norm_text(it.question) not in excluded]
     ext = make_manifest(pool, n, seed, "eval_mathext")
-    save_manifest(ext, outdir / "manifest_eval_mathext.json")
     base = json.loads((outdir / "manifest_eval.json").read_text())["ids"]
     full_ids = sorted(set(base) | set(ext["ids"]))
     save_manifest({"name": "eval_full", "seed": None, "n": len(full_ids), "ids": full_ids,
@@ -93,6 +95,8 @@ def extend_math_eval(cfg: dict, loaders: dict, outdir: Path) -> None:
     items = load_items(outdir / "items.jsonl")
     known = {it.id for it in items}
     save_items(items + [by_id[i] for i in ext["ids"] if i not in known], outdir / "items.jsonl")
+    # published last: its presence marks a complete extension (no half-written state)
+    save_manifest(ext, outdir / "manifest_eval_mathext.json")
 
 
 def eval_manifest_for(cfg: dict, split: str) -> str:
@@ -218,6 +222,10 @@ def cmd_generate(args) -> None:
     if store.done("raw_candidates", name):
         if args.fresh:
             sys.exit(f"{name} already exists but --fresh was requested")
+        have = set(store.read("raw_candidates", name)["question_id"])
+        if have != set(ids):  # e.g. a --limit test pool under the production name
+            sys.exit(f"{name} exists but was generated for different questions "
+                     f"({len(set(ids) - have)} missing, {len(have - set(ids))} extra); refusing to reuse it")
         print(f"{name} exists, skipping")
         return
     generate_pool(GENERATORS[args.generator], [items[i] for i in ids], store, name, tuple(g["seeds"]),
@@ -253,8 +261,20 @@ def _context(args):
         store=_store(), questions={k: v.question for k, v in items.items()}, device="cuda",
         verifier_specs=VERIFIERS, generic_texts=_generic_texts(), n_calib=128,
         dev_scored_ids=_manifest("gate"),  # frozen stratified dev subset scored in every condition
+        expected_eval_ids=_expected_eval_ids(),  # evaluation pools must equal their manifests
         frozen_lambda=json.loads(lam_file.read_text()) if lam_file.exists() else {},
     )
+
+
+def _expected_eval_ids() -> dict[str, set]:
+    """Primary generators: the preregistered full manifest; secondary: its gen2 subset."""
+    from .experiment import load_config
+    from .generate import GENERATORS
+
+    cfg = load_config(DEFAULT_CFG)
+    full = set(_manifest(cfg["data"].get("eval_manifest", "eval")))
+    sec = cfg["generation"]["secondary"]
+    return {g: (set(_manifest("gen2")) if g == sec else full) for g in GENERATORS}
 
 
 def _generic_texts() -> list[str]:
@@ -295,8 +315,8 @@ def cmd_phase1(args) -> None:
 
     cfg = load_config(args.config)
     name = f"{args.generator}__dev"
-    gen = [sys.executable, "-m", "vq.cli", "generate", "--generator", args.generator, "--split", "dev",
-           "--name", name]
+    gen = [sys.executable, "-m", "vq.cli", "generate", "--config", args.config, "--generator", args.generator,
+           "--split", "dev", "--name", name]
     if args.limit:
         gen += ["--limit", str(args.limit)]
     subprocess.run(gen, check=True)
@@ -334,8 +354,8 @@ def cmd_phase2(args) -> None:
     cfg = load_config(args.config)
     secondary = cfg["generation"]["secondary"]
     for gen, split in ((args.generator, "eval"), (secondary, "gen2")):
-        subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--generator", gen, "--split", split,
-                        "--name", f"{gen}__eval"], check=True)
+        subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--config", args.config, "--generator", gen,
+                        "--split", split, "--name", f"{gen}__eval"], check=True)
     for gen in (args.generator, secondary):
         cmd_annotate(argparse.Namespace(generator=gen, config=args.config))
     st = _store()
@@ -394,8 +414,9 @@ def cmd_pilot(args) -> None:
         import time as _t
 
         name = f"{args.generator}__gate-pilot{args.questions}-{int(_t.time())}"  # fresh every pilot
-        subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--generator", args.generator,
-                        "--split", "gate", "--limit", str(args.questions), "--name", name, "--fresh"], check=True)
+        subprocess.run([sys.executable, "-m", "vq.cli", "generate", "--config", args.config, "--generator",
+                        args.generator, "--split", "gate", "--limit", str(args.questions), "--name", name, "--fresh"],
+                       check=True)
         st = _store()
         tps = st.meta("raw_candidates", name).get("throughput", {}).get("tok_per_s")
         df = st.read("raw_candidates", name)
@@ -509,7 +530,13 @@ def cmd_gate(args) -> None:
 def cmd_analyze(args) -> None:
     from .report import write_report
 
-    write_report(_store(), args.generator, OUT / "tables")
+    from .experiment import load_config
+
+    cfg = load_config(args.config)
+    seeds = {v: [str(s) for s in ss] for v, ss in cfg["phases"]["phase5_ch"]["seeds"].items()}
+    write_report(_store(), args.generator, OUT / "tables", memory_path=OUT / "memory.json",
+                 tiebreak_seed=cfg["seeds"]["tiebreak"], expected_ch_seeds=seeds,
+                 c1_questions=set(_manifest("eval")))  # c1: original registered population
 
 
 # ------------------------------------------------------------------- main

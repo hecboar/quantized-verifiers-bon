@@ -12,10 +12,12 @@ def cfg():
     return load_config(CFG)
 
 
-def test_phase3_has_20_scoring_campaigns_including_null_controls(cfg):
+def test_phase3_has_22_scoring_campaigns_including_null_and_repeat_controls(cfg):
     runs = phase_runs(cfg, "phase3_main", generator="G")
-    assert len(runs) == 20
-    assert len({r.name for r in runs}) == 20
+    assert len(runs) == 22
+    assert len({r.name for r in runs}) == 22
+    reps = [r for r in runs if r.condition == "bf16-repeat"]
+    assert {r.verifier for r in reps} == {"sky-4b", "sky-8b"} and all(r.batch_tokens is None for r in reps)
     nulls = [r for r in runs if r.condition == "bf16-null"]
     assert {r.verifier for r in nulls} == {"sky-1.7b", "sky-4b", "sky-8b", "prm-7b"}
     assert all(r.method == "none" and r.batch_tokens and r.batch_tokens != 16_384 for r in nulls)

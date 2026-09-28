@@ -44,7 +44,7 @@ def test_prepare_data_refuses_to_overwrite_manifests(tmp_path):
 def test_plan_command_lists_runs(capsys):
     main(["plan", "--config", str(CFG), "--generator", "qwen2.5-1.5b"])
     out = capsys.readouterr().out
-    assert "phase3_main: 20 runs" in out  # 16 + 4 BF16 null controls
+    assert "phase3_main: 22 runs" in out  # 16 + 4 BF16 null + 2 BF16 repeat controls
     assert "phase5_ch: 20 runs" in out
     assert "EUR" in out
 
@@ -111,3 +111,26 @@ def test_plan_counts_the_math_extension():
     n_eval = sum(cfg["data"]["eval"].values()) + cfg["data"]["eval_extension"]["math_test"]
     expected = (n_eval + sum(cfg["data"]["dev"].values()) + cfg["data"]["gen2_subset"]) * 32 * DEFAULT_THROUGHPUT["avg_gen_tokens"]
     assert gen.tokens == expected
+
+
+def test_extension_excludes_dev_texts_and_publishes_atomically(tmp_path):
+    """Regression test."""
+    from vq.cli import extend_math_eval
+    from vq.data import Item, load_manifest
+
+    cfg = load_config(CFG)
+    prepare_data(cfg, fake_loaders(), tmp_path)
+    dev_ids = load_manifest(tmp_path / "manifest_dev.json")["ids"]
+    from vq.data import load_items
+
+    items = {it.id: it for it in load_items(tmp_path / "items.jsonl")}
+    dev_texts = [items[i].question for i in dev_ids if i.startswith("mathtrain")]
+    math500 = [Item(f"math500-{i}", f"m500 {i}", "1", "math", "math500") for i in range(10)]
+    # the test pool contains every dev MATH text: none of them may be sampled
+    pool = [Item(f"mathtest-x-{i}", t, "1", "math", "math-test") for i, t in enumerate(dev_texts)]
+    pool += [Item(f"mathtest-y-{i}", f"fresh {i}", "1", "math", "math-test") for i in range(900)]
+    extend_math_eval(cfg, {"math_test": lambda: pool, "math500": lambda: math500}, tmp_path)
+    ext = load_manifest(tmp_path / "manifest_eval_mathext.json")["ids"]
+    assert all(i.startswith("mathtest-y-") for i in ext)
+    # published last: the extension manifest exists only once everything else is written
+    assert (tmp_path / "manifest_eval_full.json").stat().st_mtime <= (tmp_path / "manifest_eval_mathext.json").stat().st_mtime

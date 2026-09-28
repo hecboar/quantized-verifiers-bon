@@ -9,6 +9,7 @@ label-free calibration recipes.
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 import json
 import time
 from dataclasses import dataclass, field
@@ -41,6 +42,8 @@ class RunContext:
     generic_texts: list[str] | None = None  # tokenised per verifier (preferred)
     generic_chunk_tokens: int = 512
     frozen_lambda: dict[str, float] = field(default_factory=dict)
+    # generator -> question ids its evaluation pool must contain exactly (manifest)
+    expected_eval_ids: dict[str, set] | None = None
     max_tokens: int = 16_384
     dtype: torch.dtype = torch.bfloat16
 
@@ -110,7 +113,16 @@ def _work_rows(ctx: RunContext, generator: str, dev_full: bool, dev_scored_only:
         return ctx.store.read("candidates", f"{generator}__dev").assign(split="dev")
     if not ctx.store.done("candidates", f"{generator}__eval"):
         raise FileNotFoundError(f"candidates {generator}__eval not generated (use dev_full for the phase-1 gate)")
-    parts = [ctx.store.read("candidates", f"{generator}__eval").assign(split="eval")]
+    ev = ctx.store.read("candidates", f"{generator}__eval")
+    if ctx.expected_eval_ids is not None and generator in ctx.expected_eval_ids:
+        want, got = set(ctx.expected_eval_ids[generator]), set(ev["question_id"])
+        if want != got:
+            raise ValueError(f"{generator}__eval does not match its manifest "
+                             f"({len(want - got)} missing, {len(got - want)} unexpected questions)")
+        sizes = ev.groupby("question_id").size()
+        if sizes.nunique() != 1 or ev.duplicated(["question_id", "cand"]).any():
+            raise ValueError(f"{generator}__eval: unequal or duplicated candidate pools")
+    parts = [ev.assign(split="eval")]
     if has_dev:  # the secondary generator has no dev pools
         parts.append(_dev_scored_rows(ctx, ctx.store.read("candidates", f"{generator}__dev")))
     df = pd.concat(parts, ignore_index=True)
@@ -154,6 +166,31 @@ def _run_fingerprint(run: ScoreRun, ctx: RunContext, rows: pd.DataFrame, lam: fl
     return h.hexdigest()
 
 
+def _file_digest(path) -> str:
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return "absent"
+
+
+def _run_fingerprint_v2(run: ScoreRun, ctx: RunContext, rows: pd.DataFrame, lam: float, mode: str) -> str:
+    """v1 plus everything else that determines the scores:
+    the question texts actually scored, the effective scoring batch budget and the
+    calibration inputs (generic texts, or the BF16 dev scores that feed CH/DPQ pairs)."""
+    h = hashlib.sha256(_run_fingerprint(run, ctx, rows, lam, mode).encode())
+    qtext = [ctx.questions[q] for q in rows["question_id"].unique()]
+    calib = None
+    if run.method in ("gptq", "awq"):
+        if run.recipe == "generic":
+            src = ctx.generic_ids if ctx.generic_ids is not None else ctx.generic_texts
+            calib = hashlib.sha256(json.dumps(src, default=str).encode()).hexdigest()
+        else:
+            calib = _file_digest(ctx.store._path("scores", dev_full_name(run.calib_gen, run.verifier)))
+    h.update(json.dumps({"questions": qtext, "batch_tokens": run.batch_tokens or ctx.max_tokens,
+                         "calibration": calib, "chunk": ctx.generic_chunk_tokens}, sort_keys=True).encode())
+    return h.hexdigest()
+
+
 def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_after_shards: int | None = None,
                 dev_scored_only: bool = False) -> str:
     """dev_full: all development pools (calibration source / gate).
@@ -167,18 +204,22 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
     rows = _work_rows(ctx, run.generator, dev_full, dev_scored_only)
     lam = _resolve_lambda(ctx, run) if run.method == "gptq" else 0.0
     fp = _run_fingerprint(run, ctx, rows, lam, mode)
+    fp2 = _run_fingerprint_v2(run, ctx, rows, lam, mode)
     if ctx.store.done("scores", name):
-        if ctx.store.meta("scores", name).get("fingerprint") != fp:
+        stored = ctx.store.meta("scores", name)
+        # v2 when recorded; campaigns from before v2 are accepted only if their v1 matches
+        ok = stored.get("fingerprint_v2") == fp2 if "fingerprint_v2" in stored else stored.get("fingerprint") == fp
+        if not ok:
             raise RuntimeError(f"{name} exists with a different fingerprint (inputs or settings changed); "
                                "delete it explicitly to recompute")
         return "skipped"
-    ctx.store.check_shard_fingerprint("scores", name, fp)
+    ctx.store.check_shard_fingerprint("scores", name, fp2)
 
     spec = ctx.verifier_specs[run.verifier]
     tok, model = ctx.loader(spec, device=ctx.device, dtype=ctx.dtype)
     batch_tokens = run.batch_tokens or ctx.max_tokens
     scorer = Scorer(spec, tok, model, max_tokens=batch_tokens)
-    meta: dict = {"run": run.__dict__, "name": name, "torch": torch.__version__, "fingerprint": fp, "mode": mode,
+    meta: dict = {"run": run.__dict__, "name": name, "torch": torch.__version__, "fingerprint": fp, "fingerprint_v2": fp2, "mode": mode,
                   "batch_tokens": batch_tokens}
     try:
         import transformers
@@ -215,6 +256,9 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
             "non_target_changed": sorted(set(changed) - targets),
             "head_or_embed_changed": any(("embed" in n or "norm" in n or n.startswith("score")) for n in changed),
         }
+        a = meta["audit"]
+        if a["n_targets"] == 0 or a["n_changed"] != a["n_targets"] or a["non_target_changed"]:
+            raise RuntimeError(f"{name}: quantization audit failed ({a}); nothing scored")
 
     done = set(ctx.store.shard_ids("scores", name))
     n_shards = -(-len(rows) // ctx.shard_size)

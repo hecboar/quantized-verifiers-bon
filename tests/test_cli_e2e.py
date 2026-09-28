@@ -18,6 +18,11 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "DATA", data)
     monkeypatch.setattr(cli, "OUT", out)
     cli.prepare_data(load_config(cli.DEFAULT_CFG), fake_loaders(), data)
+    from vq.data import Item
+
+    m500 = [Item(f"math500-{i}", f"math500 question {i}", str(i), "math", "math500") for i in range(500)]
+    mtest = [Item(f"mathtest-algebra-{i}", f"math test question {i}", str(i), "math", "math-test") for i in range(2000)]
+    cli.extend_math_eval(load_config(cli.DEFAULT_CFG), {"math_test": lambda: mtest, "math500": lambda: m500}, data)
     ev = json.loads((data / "manifest_eval.json").read_text())["ids"][:10]
     dev = json.loads((data / "manifest_gate.json").read_text())["ids"]  # gate subset must be fully pooled
 
@@ -37,6 +42,7 @@ def env(tmp_path, monkeypatch):
         ctx.verifier_specs = {"sky-4b": VerifierSpec("sky-4b", "none", "orm")}
         ctx.dtype = None
         ctx.generic_chunk_tokens = 16
+        ctx.expected_eval_ids = None  # tiny test pools are a subset of the manifests
         return ctx
 
     monkeypatch.setattr(cli, "_context", tiny_context)
@@ -266,3 +272,40 @@ def test_phase2_is_a_grid_step_needing_the_gate():
     from vq.pod import requires_gate
 
     assert requires_gate("phase2 --generator G") is True
+
+
+def test_child_processes_receive_the_parent_config(env, monkeypatch):
+    """children silently used DEFAULT_CFG."""
+    import subprocess
+
+    from test_pilot import fake_generate
+
+    store, ev, pools = env
+    items = cli._items()
+    seen = []
+
+    def fake_run(argv, check=True):
+        seen.append(argv)
+        name = argv[argv.index("--name") + 1]
+        split = argv[argv.index("--split") + 1]
+        ids = cli._manifest("eval" if split == "eval" else split)[:6]
+        store.write("raw_candidates", name, fake_generate([items[i] for i in ids]), overwrite=True)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(cli, "_manifest", lambda name, real=cli._manifest: real(name)[:6])
+    cli.main(["phase2", "--generator", "G", "--config", str(cli.DEFAULT_CFG)])
+    assert all(a[a.index("--config") + 1] == str(cli.DEFAULT_CFG) for a in seen)
+
+
+def test_generate_refuses_to_reuse_a_pool_built_for_other_questions(env, capsys):
+    """a --limit (test) pool under the production name must never be
+    silently reused by a later full run."""
+    store, ev, pools = env
+    from test_pilot import fake_generate
+
+    items = cli._items()
+    ids = cli._manifest("dev")[:5]
+    store.write("raw_candidates", "G__dev", fake_generate([items[i] for i in ids]), overwrite=True)
+    with pytest.raises(SystemExit, match="different questions"):
+        cli.main(["generate", "--generator", "G", "--split", "dev", "--name", "G__dev"])

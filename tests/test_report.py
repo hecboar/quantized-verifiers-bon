@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from vq.report import write_report
@@ -11,7 +12,8 @@ def _mk(tmp_path, Q=40, C=8):
     rng = np.random.default_rng(0)
     st = CampaignStore(tmp_path / "store")
     cands, base = [], {}
-    for split, pre in (("eval", "e"), ("dev", "d")):
+    # registered id formats (strict domain classification)
+    for split, pre in (("eval", "gsm8k-test-"), ("dev", "gsm8k-train-")):
         for q in range(Q):
             corr = rng.random(C) < 0.5
             base[(split, q)] = rng.normal(size=C) + corr
@@ -26,7 +28,7 @@ def _mk(tmp_path, Q=40, C=8):
         r = np.random.default_rng(seed)
         rows = []
         for (split, q), b in base.items():
-            pre = "e" if split == "eval" else "d"
+            pre = "gsm8k-test-" if split == "eval" else "gsm8k-train-"
             for c in range(C):
                 rows.append({"split": split, "question_id": f"{pre}{q}", "cand": c, "score": b[c] + noise * r.normal()})
         return pd.DataFrame(rows)
@@ -153,3 +155,33 @@ def test_preregistered_difficulty_and_scaling_contrasts(tmp_path):
     dom = pd.read_csv(out / "by_domain.csv")
     assert {"verifier", "condition", "domain", "N", "delta", "delta_lo", "delta_hi"} <= set(dom.columns)
     assert set(dom["domain"]) == {"gsm8k", "math"}
+
+
+def test_domain_classification_is_strict():
+    from vq.report import domain_of
+
+    assert domain_of("gsm8k-test-3") == "gsm8k"
+    assert domain_of("math500-test/algebra/1.json") == "math"
+    assert domain_of("mathtest-algebra-7") == "math"
+    with pytest.raises(ValueError):
+        domain_of("mystery-12")
+
+
+def test_c3_requires_the_exact_configured_seed_sets(tmp_path):
+    st = _mk(tmp_path)  # has seeds 0 and 1 for both ORMs
+    out = tmp_path / "tables"
+    write_report(st, "G", out, budgets=[8], repeats=10, n_boot=200,
+                 expected_ch_seeds={"sky-4b": ["0", "1"], "sky-8b": ["0", "1", "2"]})
+    conf = json.loads((out / "confirmatory.json").read_text())
+    assert conf["c3_ch_vs_dpq"]["status"].startswith("missing")  # 8B seed 2 absent
+
+
+def test_c1_uses_its_registered_population_only(tmp_path):
+    """c1 was registered on the original 1200-question manifest; the
+    MATH extension must not change its target population."""
+    st = _mk(tmp_path, Q=60)
+    out = tmp_path / "tables"
+    subset = {f"gsm8k-test-{q}" for q in range(20)}
+    write_report(st, "G", out, budgets=[8], repeats=10, n_boot=200, c1_questions=subset)
+    conf = json.loads((out / "confirmatory.json").read_text())
+    assert conf["c1_delta_8b_gptq_w4"]["n"] == 20

@@ -33,7 +33,12 @@ PREREG_LOW_N, PREREG_HIGH_N = 4, 32
 
 
 def domain_of(question_id: str) -> str:
-    return "gsm8k" if question_id.startswith("gsm8k") else "math"
+    """Registered domains only (preregistration §3); unknown ids are an error."""
+    if question_id.startswith("gsm8k-"):
+        return "gsm8k"
+    if question_id.startswith(("math500-", "mathtest-", "mathtrain-")):
+        return "math"
+    raise ValueError(f"unregistered question id {question_id!r}")
 # memory measurement -> score condition of the *same* deployment
 DEPLOYMENT = {"bf16": "bf16", "gptq-w4": "gptq-w4-packed", "nf4": "nf4-bnb"}
 
@@ -67,7 +72,9 @@ def _vote_temperature(store, generator, v, tiebreak_seed):
 def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1, 2, 4, 8, 16, 32),
                  repeats: int = 200, n_boot: int = 10_000, seed: int = 7,
                  memory_path: Path = Path("outputs/memory.json"), ceilings_gb=(4, 6, 8, 12, 16),
-                 primary_ceiling_gb: float = 6, tiebreak_seed: int = 11) -> None:
+                 primary_ceiling_gb: float = 6, tiebreak_seed: int = 11,
+                 expected_ch_seeds: dict[str, list[str]] | None = None,
+                 c1_questions: set[str] | None = None) -> None:
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     conds = _conditions(store, generator)
@@ -142,7 +149,14 @@ def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1,
     contrasts: dict[str, np.ndarray] = {}
     missing: dict[str, str] = {}
     if ("sky-8b", "gptq-w4") in per_q_top and ("sky-8b", "bf16") in per_q_top:
-        contrasts["c1_delta_8b_gptq_w4"] = per_q_top[("sky-8b", "gptq-w4")] - per_q_top[("sky-8b", "bf16")]
+        d1 = per_q_top[("sky-8b", "gptq-w4")] - per_q_top[("sky-8b", "bf16")]
+        keep = None
+        if c1_questions is not None:  # registered population (original eval manifest)
+            keep = np.array([q in c1_questions for q in qids_by_v["sky-8b"]])
+        if keep is not None and keep.sum() != len(c1_questions):
+            missing["c1_delta_8b_gptq_w4"] = "missing: registered c1 population not fully scored"
+        else:
+            contrasts["c1_delta_8b_gptq_w4"] = d1 if keep is None else d1[keep]
     else:
         missing["c1_delta_8b_gptq_w4"] = "missing: sky-8b bf16 / gptq-w4 runs"
 
@@ -152,12 +166,15 @@ def write_report(store: CampaignStore, generator: str, outdir: Path, budgets=(1,
             return {c.rsplit("-s", 1)[1]: a for (vv, c), a in per_q_top.items()
                     if vv == v and c.startswith(f"gptq-w4-{rec}-s")}
         ch, dpq = by_seed("ch"), by_seed("dpq")
-        if not ch or set(ch) != set(dpq):
-            why.append(f"{v}: CH seeds {sorted(ch)} vs DPQ seeds {sorted(dpq)}")
+        want = set(expected_ch_seeds[v]) if expected_ch_seeds and v in expected_ch_seeds else set(ch)
+        if not ch or set(ch) != set(dpq) or set(ch) != want:
+            why.append(f"{v}: CH seeds {sorted(ch)} vs DPQ seeds {sorted(dpq)} (required {sorted(want)})")
             continue
         ch_diffs.append(np.mean([ch[k] for k in sorted(ch)], axis=0) - np.mean([dpq[k] for k in sorted(dpq)], axis=0))
-    if len(ch_diffs) == 2:
+    if len(ch_diffs) == 2 and len({tuple(qids_by_v.get(v, ())) for v in ("sky-4b", "sky-8b")}) == 1:
         contrasts["c3_ch_vs_dpq"] = np.mean(ch_diffs, axis=0)
+    elif len(ch_diffs) == 2:
+        why.append("sky-4b and sky-8b were scored on different questions")
     else:
         missing["c3_ch_vs_dpq"] = "missing: matched CH/DPQ seed sets required for both ORMs (" + "; ".join(why) + ")"
 

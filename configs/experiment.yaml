@@ -38,6 +38,8 @@ conditions:
   # null control: same BF16 model, different batch layout (padding/grouping). The
   # BF16-vs-null winner-change rate is the numerical noise floor (BF16 on GPU).
   bf16-null: {method: none, batch_tokens: 4096}
+  # repeat control: same BF16 model AND same batch layout -> pure run-to-run nondeterminism
+  bf16-repeat: {method: none}
   nf4:       {method: nf4}
   gptq-w4:   {method: gptq, bits: 4, group_size: 128, calib: generic}
   gptq-w3:   {method: gptq, bits: 3, group_size: 128, calib: generic}
@@ -71,6 +73,8 @@ phases:
       - {verifier: sky-4b, condition: bf16-null}
       - {verifier: sky-8b, condition: bf16-null}
       - {verifier: prm-7b, condition: bf16-null}
+      - {verifier: sky-4b, condition: bf16-repeat}
+      - {verifier: sky-8b, condition: bf16-repeat}
   phase4_gen2:
     generator: secondary
     runs:
