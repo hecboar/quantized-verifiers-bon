@@ -581,3 +581,10 @@ def test_create_adopts_pod_created_behind_a_server_error():
     pod = create_pod_when_available(RunPodClient("K", session=s), PodSpec(name="x"), retry_s=0, max_wait_s=60,
                                     sleep=lambda t: None)
     assert pod["id"] == "ghost1"
+
+
+def test_install_has_its_own_time_limit():
+    """A SECURE host sat 1 h 53 min in `pip install` at 0.4% CPU (stalled network)
+    while billing; the install gets its own cap and fails fast (exit 97)."""
+    cmd = bootstrap_command("score --phase p", max_hours=4)
+    assert "timeout -k 60 30m pip install" in cmd
