@@ -9,3 +9,5 @@ while IFS= read -r -d '' kv; do
   esac
 done < /proc/1/environ
 mkdir -p "${HF_HOME:-/workspace/hf_cache}" "${PIP_CACHE_DIR:-/workspace/pip_cache}"
+# fewer fragmentation OOMs on 24 GB (allocator only: no numerical effect)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True

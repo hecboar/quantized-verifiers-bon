@@ -57,23 +57,36 @@ def gptq_quantize(
     block_size: int = 128,
     return_params: bool = False,
     fp16_scales: bool = True,
+    consume_h: bool = False,
 ):
     """Returns dequantized weights (same shape/dtype as w); with
     return_params also the per-group scales and zeros [out, n_groups].
-    No act-order (static groups, required for packed-kernel export)."""
+    No act-order (static groups, required for packed-kernel export).
+    `consume_h` (or `h` passed as a one-element list, popped here): the caller
+    hands the Hessian over (modified in place and freed early, not copied).
+    Memory-lean (diagonal damping, eager frees): the PRM-7B down_proj Hessian
+    (18944^2 fp32 = 1.4 GB) OOMed on 24 GB; results are bit-identical to the
+    previous version (tests/reference/gptq_before_memfix.py)."""
     dtype = w.dtype
     W = w.clone().float()
-    H = h.clone().float().to(W.device)
+    if isinstance(h, list):  # handed over in a box: the caller keeps no reference
+        h, consume_h = h.pop(), True
+    H = h.float().to(W.device)
+    if not consume_h and H.data_ptr() == h.data_ptr():
+        H = H.clone()
+    del h
     cols = W.shape[1]
 
     dead = torch.diag(H) == 0
     H[dead, dead] = 1.0
     W[:, dead] = 0.0
 
-    if damp > 0:
-        H += damp * torch.mean(torch.diag(H)) * torch.eye(cols, device=W.device)
+    if damp > 0:  # == H += damp * mean(diag) * I, without materialising I
+        H.diagonal().add_(damp * torch.mean(torch.diag(H)))
     L = torch.linalg.cholesky(H)
+    del H
     Hinv = torch.cholesky_inverse(L)
+    del L
     Hinv = torch.linalg.cholesky(Hinv, upper=True)
 
     Q = torch.zeros_like(W)

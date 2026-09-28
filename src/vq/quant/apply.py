@@ -173,10 +173,10 @@ def quantize_model(
                     diff_rows[f"{li}.{name}"] = d.shape[0]
                 elif calib.pairs:
                     diff_rows[f"{li}.{name}"] = len(calib.pairs)
-                H = acc[name].finalize(lam=lam)
+                box = [acc[name].finalize(lam=lam)]
                 acc[name] = None  # free this linear's Hessian before the next one (8B on 24 GB)
-                q, sc, zr = gptq_quantize(lin.weight.data, H, bits, group_size, damp=damp, return_params=True)
-                del H
+                # handed over in a box so gptq_quantize can free it during the inversion (PRM-7B)
+                q, sc, zr = gptq_quantize(lin.weight.data, box, bits, group_size, damp=damp, return_params=True)
                 if keep_params:
                     params[full_names[id(lin)]] = (sc.cpu(), zr.cpu())
                 if torch.cuda.is_available():
