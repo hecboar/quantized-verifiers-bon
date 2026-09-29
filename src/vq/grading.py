@@ -117,3 +117,29 @@ def grade(completion: str, gold: str, kind: str) -> bool:
             return p == g
         return _math_equal(pred, gold)
     raise ValueError(f"unknown kind {kind!r}")
+
+
+# ------------------------------------------------ exploratory sensitivity only
+_LAST_NUMBER = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?")
+_LAST_MATH = re.compile(r"\$\$(.+?)\$\$|\$(.+?)\$|\\((.+?)\\)|\\[(.+?)\\]", re.DOTALL)
+
+
+def grade_lenient(completion: str, gold: str, kind: str) -> bool:
+    """Sensitivity analysis for prose answers (NOT the registered grader):
+    identical to `grade` whenever a final answer is extractable; otherwise
+    accepts the last number (GSM8K) or the last inline math expression, else
+    the last number (MATH), in the final 400 characters."""
+    if extract_final_answer(completion) is not None:
+        return grade(completion, gold, kind)
+    tail = (completion or "")[-400:]
+    g = normalize_number(gold)
+    if kind == "math":
+        exprs = [e for m in _LAST_MATH.findall(tail) if (e := next((x for x in m if x.strip()), None))]
+        if exprs:
+            e = exprs[-1].strip()
+            p = normalize_number(e)
+            return p == g if (p is not None and g is not None) else _math_equal(e, gold)
+    nums = _LAST_NUMBER.findall(tail)
+    if not nums or g is None:
+        return False
+    return normalize_number(nums[-1].rstrip(".,")) == g

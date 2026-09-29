@@ -103,3 +103,31 @@ class TestLatexNumbers:
 
     def test_symbolic_not_a_number(self):
         assert normalize_number(r"\sqrt{2}") is None
+
+
+def test_lenient_grade_equals_strict_when_an_answer_is_extractable():
+    from vq.grading import grade, grade_lenient
+
+    for text, gold, kind in [(r"so \boxed{42}", "42", "numeric"), (r"\boxed{41}", "42", "numeric"),
+                             (r"thus \boxed{\frac{1}{2}}", r"\frac{1}{2}", "math")]:
+        assert grade_lenient(text, gold, kind) == grade(text, gold, kind)
+
+
+def test_lenient_grade_reads_prose_answers():
+    """Exploratory sensitivity analysis: prose answers without \boxed{} (the
+    strict grader counts them wrong)."""
+    from vq.grading import grade, grade_lenient
+
+    prose = "Katy used 7 teaspoons per cup, so in total she used 42 teaspoons of sugar."
+    assert not grade(prose, "42", "numeric") and grade_lenient(prose, "42", "numeric")
+    assert not grade_lenient("She used 1,200 grams, not 42.", "1200", "numeric")  # last number wins
+    assert grade_lenient("The total is 1,200 dollars.", "1200", "numeric")
+    assert grade_lenient(r"Therefore the probability is $\frac{3}{8}$.", r"\frac{3}{8}", "math")
+    assert not grade_lenient(r"Therefore the probability is $\frac{3}{7}$.", r"\frac{3}{8}", "math")
+    assert not grade_lenient("I am not sure how to continue", "5", "numeric")
+
+
+def test_lenient_grade_ignores_empty_math_delimiters():
+    from vq.grading import grade_lenient
+
+    assert grade_lenient("cost is $ $ and then 12 in total", "12", "math")
