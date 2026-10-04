@@ -40,8 +40,9 @@ def main(n_controls=30, seed=20260929):
     s = s.sample(frac=1, random_state=seed).reset_index(drop=True)
     s["item_id"] = [f"R{i + 1:03d}" for i in range(len(s))]
     s.drop(columns="text").to_csv(OUT / "key_DO_NOT_OPEN.csv", index=False)
+    # `ended_by_length` is visible from the text itself; flagging it does not unblind the arm
     blind = [{"id": r.item_id, "question": items[r.question_id].question, "gold": items[r.question_id].gold,
-              "response": r.text} for r in s.itertuples()]
+              "response": r.text, "ended_by_length": bool(r.truncated)} for r in s.itertuples()]
     (OUT / "items_blind.json").write_text(json.dumps(blind, ensure_ascii=False), encoding="utf-8")
     print(len(blind), "items:", s.stratum.value_counts().to_dict())
 
