@@ -201,9 +201,9 @@ accuracy, extractable and truncated rates.
 |---|---|
 | freeze commit | the commit that adds this table |
 | eligible after exclusions | 3,700 MATH test problems (gold self-check failures: 0); Level 5: 955; Levels 1-2: 996 |
-| `manifest_h6_hard.json` (800) | file sha256 `9413629bc6ca92504cba6aef4812de567a768195da69c138d5726151737a5ddb`; ids sha256 `3aa865cb4627cc4b558ec46f77820da7b845b3770a833a26a20901e2ce8ee651` |
-| `manifest_h6_easy.json` (200) | file sha256 `dfba4746a06d6b3d831343d00912adf510c64bd4c93b00ea4ee501cd3dd8aff2`; ids sha256 `2d52c63e46ec323268aaf0a934656c2153475155915bb74a613c15117e9a56d7` |
-| `manifest_h6_full.json` (1000) | file sha256 `887e4d55a5a1b189c88ead9f4d680c4a9be2b94d86bf4b389e4fed73ba58a19c`; ids sha256 `4f93d21e9b53bb2600e3b0b4f3d6a3f3b065b4cd8e890cc47803349b53839a71` |
+| `manifest_h6_hard.json` (800) | file sha256 (as stored in git, LF) `39c59b8d60d482bad63b1ccda0d7921eb1a762c4fb2eee92ccf69fad0fab8272`; ids sha256 `3aa865cb4627cc4b558ec46f77820da7b845b3770a833a26a20901e2ce8ee651` |
+| `manifest_h6_easy.json` (200) | file sha256 (git, LF) `9832735add2657f6eb30f136e3e7f8e515eff201e292278d2c3c72bd3ea21106`; ids sha256 `2d52c63e46ec323268aaf0a934656c2153475155915bb74a613c15117e9a56d7` |
+| `manifest_h6_full.json` (1000) | file sha256 (git, LF) `5cf0e48453789070c62db5525dfefe840e86c3c6a7899c663cd9ad7fa5cf3ab4`; ids sha256 `4f93d21e9b53bb2600e3b0b4f3d6a3f3b065b4cd8e890cc47803349b53839a71` |
 | stratum H subjects | algebra 198, intermediate algebra 162, prealgebra 110, number theory 91, geometry 81, counting & probability 80, precalculus 78 |
 | analysis code | `scripts/analyze_h6.py` at the freeze commit (dry-run tested on the registered pool only) |
 | candidate pool sha256 (after generation, before scoring) | appended as a deviation-log entry |
