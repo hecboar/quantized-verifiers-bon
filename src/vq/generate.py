@@ -16,6 +16,8 @@ GENERATORS = {
     "qwen2.5-1.5b": "Qwen/Qwen2.5-1.5B-Instruct",
     "qwen2.5-math-1.5b": "Qwen/Qwen2.5-Math-1.5B-Instruct",
     "llama3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
+    # H6 (docs/preregistration_h6.md): stronger generator, hard unused MATH problems
+    "qwen2.5-math-7b": "Qwen/Qwen2.5-Math-7B-Instruct",
 }
 
 

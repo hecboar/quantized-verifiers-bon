@@ -115,5 +115,19 @@ def load_math_test() -> list[Item]:
     return out
 
 
+def math_test_levels() -> dict[str, int]:
+    """Difficulty level (1-5) of every MATH test problem, keyed like load_math_test."""
+    from datasets import load_dataset
+
+    out = {}
+    for subj in MATH_SUBJECTS:
+        ds = load_dataset("EleutherAI/hendrycks_math", subj, split="test", token=_token())
+        for i, r in enumerate(ds):
+            lv = r["level"].removeprefix("Level ")
+            if lv.isdigit():
+                out[f"mathtest-{subj}-{i}"] = int(lv)
+    return out
+
+
 def norm_text(s: str) -> str:
     return " ".join(s.split())

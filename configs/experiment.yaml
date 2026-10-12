@@ -26,6 +26,14 @@ generation:
   primary_candidates: [qwen2.5-1.5b, qwen2.5-math-1.5b]   # chosen at the gate
   secondary: llama3.2-3b
 
+# H6 (docs/preregistration_h6.md): separate study, own confirmatory family
+h6:
+  generator: qwen2.5-math-7b
+  hard: {level: [5], n: 800, seed: 20261012}       # confirmatory stratum H
+  easy: {level: [1, 2], n: 200, seed: 20261013}    # exploratory stratum E
+  max_tokens: 2048                                 # other generation settings as above
+  max_model_len: 4096
+
 selection:
   budgets: [1, 2, 4, 8, 16, 32]
   repeats: 200
@@ -96,6 +104,16 @@ phases:
       - {verifier: sky-4b, condition: rtn-w4}
       - {verifier: sky-8b, condition: rtn-w4}
       - {verifier: sky-8b, condition: rtn-w8}
+  phase7_h6:                       # H6: confirmatory runs first, then controls
+    runs:
+      - {verifier: sky-8b, condition: bf16}
+      - {verifier: sky-8b, condition: gptq-w4}
+      - {verifier: prm-7b, condition: bf16}
+      - {verifier: prm-7b, condition: gptq-w4}
+      - {verifier: sky-8b, condition: bf16-null}
+      - {verifier: prm-7b, condition: bf16-null}
+      - {verifier: sky-8b, condition: gptq-w3}
+      - {verifier: prm-7b, condition: gptq-w3}
   dev_numeric_controls:
     runs:
       - {verifier: sky-4b, condition: rtn-w4}
