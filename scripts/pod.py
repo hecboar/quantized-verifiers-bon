@@ -48,11 +48,13 @@ def _env():
     return vals
 
 
-def _bundle(tag: str) -> Path:
+def _bundle(tag: str, packed: bool = True) -> Path:
     """Committed code (git archive, LF) + data manifests + current outputs. One
     file per launch: parallel launches shared one path and one overwrote a
     bundle while another was uploading it (corrupted tar on the pod)."""
-    extras = ["data", "outputs/store", "outputs/frozen_lambda.json", "outputs/throughput.json", "outputs/packed"]
+    extras = ["data", "outputs/store", "outputs/frozen_lambda.json", "outputs/throughput.json"]
+    if packed:  # ~7 GB of packed GPTQ checkpoints: only phase-6 style steps need them
+        extras.append("outputs/packed")
     return bundle_code(ROOT, ROOT / "outputs" / "bundles" / f"{tag}.tar.gz", extras)
 
 
@@ -101,7 +103,7 @@ def cmd_launch(a):
         print(f"host check: {why}", flush=True)
         if not ok:
             raise BadHost(why)
-        bundle = _bundle(pid)
+        bundle = _bundle(pid, packed=not a.no_packed)
         _run(ssh_argv(ep, f"mkdir -p {REMOTE}", str(KEY)))
         _run(scp_argv(ep, str(bundle), f"{REMOTE}/bundle.tar.gz", str(KEY), upload=True))
         _run(ssh_argv(ep, f"cd {REMOTE} && tar xzf bundle.tar.gz && rm bundle.tar.gz", str(KEY)))
@@ -219,6 +221,7 @@ def main():
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
     s.add_argument("--install-minutes", type=int, default=30, help="cap for pip install (phase 6: 75)")
     s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")
+    s.add_argument("--no-packed", action="store_true", help="leave outputs/packed out of the bundle (saves ~7 GB upload)")
     s.add_argument("--watch", action="store_true", help="after launching, watch until done, fetch and delete")
     s.add_argument("--yes", action="store_true")
     s.set_defaults(fn=cmd_launch)
