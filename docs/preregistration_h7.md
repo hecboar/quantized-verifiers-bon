@@ -1,7 +1,7 @@
 # Preregistration amendment 4 — H7: value retention where the verifier adds value
 
-**Status: DRAFT for independent review (2026-10-13). Not yet frozen.** Freezing is the
-commit that fills in §8. At drafting time **no H7 candidate has been generated and no
+**Status: FROZEN 2026-10-13** (the commit that adds this line; revised after independent
+review, see the review record). At drafting time **no H7 candidate has been generated and no
 verifier has scored any H7 item**. The item set is fixed by rule (all eligible problems,
 no sampling) and was materialised by `vq.cli prepare-h7`; only ids, levels and subjects
 were looked at.
@@ -22,6 +22,16 @@ registered weak generator on hard problems. In the completed study (exploratory,
 Levels 4-5 of the registered eval set, n = 622), BF16 Best-of-32 beat majority@32 by
 +6.6 pp (PRM-7B) and +3.5 pp (Skywork-8B). Choosing the regime from earlier data is
 legitimate because H7 uses only problems never used before.
+
+**Selection universe (disclosed).** Regimes inspected before choosing: (i) the
+registered eval set with the weak generator, all questions (Skywork ORMs within ~1 pp of
+majority vote; PRM +3.9 pp); (ii) its MATH Level-5 subset (Skywork-8B +4.4, PRM +7.1);
+(iii) its Level 4-5 subset (+3.5, +6.6; chosen for H7 because Level 4 has enough
+unused problems); (iv) H6, strong generator (ORM −3.8, PRM +0.1). The planning gains
+are selected estimates and likely optimistic (winner's curse): the gains on the new
+problems may be smaller. Conclusions are limited to this frozen residual Level 4-5 MATH
+set, whose 905/155 level mix is the estimand (not "hard MATH" in general: H6 used most
+eligible Level-5 problems).
 
 ## 2. Items (frozen)
 
@@ -55,8 +65,21 @@ Identical to H6 §4-§6, with "stratum H" = the 1,060 H7 problems and labels H7a
   descriptive M with 97.5% intervals.
 - Analysis: the frozen `scripts/analyze_h6.py` run as
   `--generator qwen2.5-1.5b-h7 --hard data/manifest_h7.json --easy none
-  --out outputs/tables/h7 --prefix H7` (no stratum E in H7; the stratum-E and H−E
-  items of H6 §7 are not applicable).
+  --out outputs/tables/h7 --prefix H7`. The stratum-E and H−E analyses of H6 §7 are
+  intentionally absent (H7 has one stratum).
+- Added exploratory outputs (also produced for H6, where they change nothing): estimates
+  per MATH level with truncation rates, and an equal-level-weight aggregate
+  (descriptive; the fixed-population aggregate is the estimand).
+- Analysis-script corrections made after independent review and before any H7 data
+  (`scripts/analyze_h6.py`): explicit `--easy none`; majority-vote ties broken by first
+  appearance in candidate order implemented directly (on full pools identical to the
+  previous lowest-id rule; it differs only once candidates are removed); input
+  invariants (pool = manifest, 32 candidates, no duplicates); in the truncation
+  sensitivity a question whose 32 candidates are all truncated scores 0. Re-running H6
+  with the corrected script reproduces all H6 confirmatory and exploratory numbers
+  exactly.
+- Wording: H7b tests the joint proposition "BF16 adds value and GPTQ-W4 keeps at least
+  half of it"; it does not establish accuracy equivalence, which requires H7a.
 
 **What H7 adds over H6.** If H7b is supported for a verifier, the paper may state
 confirmatorily that 4-bit GPTQ keeps at least half of that verifier's advantage over
@@ -66,10 +89,13 @@ regeneration or re-selection follows.
 
 ## 5. Power (planning, from the completed study, Levels 4-5, n = 622)
 
-- H7b: per-question SD of the R term 0.22; SE at n = 1,060 = 0.0066. With Delta = 0,
+- H7b: per-question SD of the R term 0.22; SE at n = 1,060 = 0.0068. With Delta = 0,
   R = half the gain: PRM (gain 6.6 pp) power ~1.00 at alpha 0.0125; ORM (gain 3.5 pp)
-  0.66 at alpha 0.0125, 0.84 at 0.05. If the ORM's gain on new problems is smaller,
-  H7b-ORM is underpowered; this is stated in advance.
+  0.64 at alpha 0.0125, 0.83 at 0.05, and lower if the selected gain shrinks. All four
+  tests stay co-primary under Holm, but **a non-supported H7b-ORM will be reported as
+  weak evidence (likely underpowered), not as evidence that value is lost**; H7b-PRM is
+  the well-powered test of the value-retention claim. r stays 0.5 (lowering it would
+  weaken the substantive claim).
 - H7a: SD of Delta 0.165, SE 0.0051: P(equivalence) ~1.00 at true Delta 0, 0.95 at
   +-1 pp (alpha 0.0125).
 
@@ -81,6 +107,16 @@ longer candidates. Two scoring pods (one per verifier, confirmatory runs first),
 ~2.5 h with setup. Total ~5 h of RTX 4090 SECURE, **~4-5 EUR; cap 8 EUR**: exploratory
 runs are dropped first if needed. Watchers run detached; pods deleted after each step.
 
+## Review record
+
+Independent review (Codex, 2026-10-13) of the draft. Adopted: selection-universe
+disclosure and optimism caveat; corrected power arithmetic (SE 0.0068; ORM 0.64/0.83);
+explicit reading of an unsupported H7b-ORM; the four analysis-script corrections above;
+per-level estimates with truncation rates and an equal-level-weight sensitivity; explicit
+absence of the stratum-E analyses; H7a required for accuracy-equivalence wording. Not
+adopted: making the PRM test the sole primary (the family of four is kept for symmetry
+with H6; the asymmetric power is stated instead).
+
 ## 7. Deviations
 
 Appended below with date and reason.
@@ -89,8 +125,9 @@ Appended below with date and reason.
 
 | item | value |
 |---|---|
-| freeze commit | |
+| freeze commit | the commit that adds this table's values |
 | `manifest_h7.json` ids sha256 | `a2bc4e92b4dc51fa4b042b369f907cfd723ce9dc1eeb765e4694a464aca71efe` |
-| `manifest_h7.json` file sha256 (git, LF) | |
+| `manifest_h7.json` file sha256 (git, LF) | `ad792cc16daba265d7f3305529e3e7b494c6763be039d4e9c60d24f816075f59` |
 | composition | Level 4: 905, Level 5: 155; algebra 252, intermediate algebra 227, prealgebra 156, number theory 120, geometry 116, precalculus 104, counting & probability 85 |
+| analysis code | `scripts/analyze_h6.py` at the freeze commit (re-verified on H6: identical outputs) |
 | candidate pool sha256 | appended as a deviation-log entry before scoring |

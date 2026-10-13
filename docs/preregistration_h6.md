@@ -245,3 +245,10 @@ Generator-side statistics (allowed by §3): stratum H accuracy 0.608, extractabl
 changed (the registered truncation sensitivity, §7 item 5, covers it). Scoring is split
 over four pods (ORM / PRM x confirmatory / controls) to fit the time window; runs and
 settings are unchanged.
+
+**2026-10-13 — analysis-script corrections (after the H6 analysis, before any H7 data).**
+Prompted by the independent review of H7: explicit `--easy none`; majority ties broken
+by first appearance in candidate order implemented directly; input invariants; in the
+truncation sensitivity an all-truncated question scores 0; per-level exploratory rows.
+Re-running H6 with the corrected script reproduces every H6 confirmatory and
+exploratory number exactly (`docs/preregistration_h7.md`, review record).

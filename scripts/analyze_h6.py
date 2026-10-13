@@ -26,6 +26,8 @@ from vq.store import CampaignStore  # noqa: E402
 VERIFIERS = ("sky-8b", "prm-7b")
 MARGIN, R_FRAC, B, SEED = 0.03, 0.5, 10_000, 7
 REPEATS, SUBSET_SEED, TIEBREAK = 200, 7, 11
+_LV = Path("data/math_levels.json")
+LEVELS = json.loads(_LV.read_text()) if _LV.exists() else {}  # MATH difficulty level per item id
 
 
 def boot(x, seed=SEED):
@@ -41,11 +43,16 @@ def ci(b, level=0.95):
 
 def majority(K, C):
     """Registered canonical clusters (vq.generate.answer_keys); key -1 does not vote;
-    ties -> lowest key id (first in candidate order); no parseable candidate -> 0."""
+    ties -> the tied cluster that appears first in candidate order; no parseable -> 0.
+    (On full pools this equals the lowest key id, since answer_keys numbers clusters by
+    first appearance; with candidates removed it need not, hence the explicit rule.)"""
     out = np.zeros(len(K))
     for i, (k, c) in enumerate(zip(K, C)):
-        if (k >= 0).any():
-            w = np.bincount(k[k >= 0]).argmax()
+        v = k[k >= 0]
+        if len(v):
+            ids, first, counts = np.unique(v, return_index=True, return_counts=True)
+            tied = counts == counts.max()
+            w = ids[tied][np.argmin(first[tied])]
             out[i] = float(c[k == w].any())
     return out
 
@@ -68,7 +75,7 @@ def main():
     st = CampaignStore("outputs/store")
     items = {it.id: it for it in load_items("data/items.jsonl")}
     hard = set(load_manifest(a.hard)["ids"])
-    easy = set(load_manifest(a.easy)["ids"]) if Path(a.easy).exists() else set()
+    easy = set() if a.easy.lower() == "none" else set(load_manifest(a.easy)["ids"])
 
     cand = st.read("candidates", f"{a.generator}__eval").sort_values(["question_id", "cand"], kind="stable")
     qids = sorted(cand.question_id.unique())
@@ -78,6 +85,10 @@ def main():
     L = L.reshape(len(qids), Cn)
     mH = np.array([q in hard for q in qids])
     mE = np.array([q in easy for q in qids])
+    # input invariants: pool = manifest(s) exactly, equal pools of 32, no duplicates
+    assert set(qids) == hard | easy, "pool questions differ from the manifest(s)"
+    assert Cn == 32 and (cand.groupby("question_id").size() == 32).all(), "pool sizes are not all 32"
+    assert not cand.duplicated(["question_id", "cand"]).any(), "duplicated candidates"
     assert mH.sum() == len(hard), "pool does not cover stratum H"
 
     def load(v, c):
@@ -125,6 +136,8 @@ def main():
                              "estimate": x[mH].mean(), "ci95": ci(boot(x[mH]))})
         Kt = np.where(trunc, -1, K)
         a0, a1 = acc(np.where(trunc, -np.inf, S0), C), acc(np.where(trunc, -np.inf, S1), C)
+        allt = trunc.all(1)  # nothing left to select once truncated candidates are removed
+        a0, a1 = np.where(allt, 0.0, a0), np.where(allt, 0.0, a1)
         mj = majority(Kt, C)
         for k_, x in (("delta", a1 - a0), ("R", (a1 - mj) - R_FRAC * (a0 - mj)), ("gain_M", a0 - mj)):
             expl.append({"verifier": v, "analysis": f"no_truncated:{k_}", "n": int(mH.sum()),
@@ -153,6 +166,20 @@ def main():
             x = (acc(S1, C, n) - acc(S0, C, n))[mH]
             expl.append({"verifier": v, "analysis": f"delta_N{n}", "n": int(mH.sum()),
                          "estimate": x.mean(), "ci95": ci(boot(x))})
+        # per-level estimates and (if several levels) the equal-level-weight aggregate
+        lv = np.array([LEVELS.get(q, 0) for q in qids])
+        for lvl in sorted(set(lv[mH])):
+            mL = mH & (lv == lvl)
+            for k_, x in (("delta", A1 - A0), ("R", (A1 - Mj) - R_FRAC * (A0 - Mj)), ("gain_M", A0 - Mj)):
+                expl.append({"verifier": v, "analysis": f"level{lvl}:{k_}", "n": int(mL.sum()),
+                             "estimate": x[mL].mean(), "ci95": ci(boot(x[mL]))})
+            expl.append({"verifier": v, "analysis": f"level{lvl}:truncated_rate", "n": int(mL.sum()),
+                         "estimate": float(trunc[mL].mean()), "ci95": None})
+        if len(set(lv[mH])) > 1:
+            for k_, x in (("delta", A1 - A0), ("R", (A1 - Mj) - R_FRAC * (A0 - Mj))):
+                expl.append({"verifier": v, "analysis": f"equal_level_weight:{k_}", "n": int(mH.sum()),
+                             "estimate": float(np.mean([x[mH & (lv == u)].mean() for u in set(lv[mH])])),
+                             "ci95": None})
         # subject-stratified bootstrap of the confirmatory estimates
         subj = np.array(["-".join(q.split("-")[1:-1]) for q in qids])[mH]
         rng = np.random.default_rng(SEED)
