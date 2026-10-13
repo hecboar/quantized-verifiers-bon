@@ -43,6 +43,14 @@ Qwen2.5-Math-PRM-7B & BF16 & 76.6 & -- & -- \\
 \end{tabular}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/curves.pdf}
+\caption{Best-of-$N$ accuracy as a function of the number of candidates $N$, per
+verifier and precision (2,000 problems; 200 random subsets per problem for $N<32$).
+The dotted line is unweighted majority vote over the same $N$ candidates.}\label{fig:curves}
+\end{figure}
+
 Three bits is where selection starts to degrade: GPTQ-W3 costs 1.3--1.8\pp\ for the
 4B, 8B and PRM verifiers and 13.2\pp\ for the 1.7B ORM, whose selection collapses
 towards the random-candidate rate. The RTN dose-response (W8 $\approx$ BF16, W4
@@ -50,6 +58,17 @@ $\approx$ GPTQ-W4) places the threshold between 4 and 3 bits for this model fami
 \todo{RTN numbers from phase3b table}.
 
 \subsection{Under a memory budget, quantize the larger verifier}\label{sec:frontier}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.75\linewidth]{figures/frontier.pdf}
+\caption{Accuracy--memory frontier of deployed Skywork ORM verifiers (Best-of-32,
+2,000 problems). Memory is the measured peak allocation while scoring a fixed workload
+(64 sequences of 900 tokens, RTX 4090); GPTQ-W4 uses packed 4-bit kernels and NF4 uses
+\texttt{bitsandbytes}. Vertical lines are the registered memory ceilings, applied to
+the GiB measurements; the dashed one is the primary 6 GiB ceiling of c2. The step line
+is the best accuracy reachable within each memory budget.}\label{fig:frontier}
+\end{figure}
 
 Fig.~\ref{fig:frontier} shows the accuracy--memory frontier of deployed verifiers.
 At the registered 6~GB ceiling, the configuration selected on development data is the
@@ -71,6 +90,16 @@ $+2.37$\pp, and with length-truncated candidates removed before selection $+2.20
 (both under the strict grader).
 
 \subsection{Why selection is robust: answer redundancy}\label{sec:mechanism}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.75\linewidth]{figures/mechanism.pdf}
+\caption{Winner change versus accuracy change at $N=32$ for every quantized condition
+and control in the main study (circles) and the two follow-up studies (H6 squares, H7
+triangles), with 95\% bootstrap intervals. Four-bit conditions change the selected
+candidate on 20--35\% of problems while staying within the $\pm3$\pp\ equivalence
+band; 3-bit conditions change about half of the winners and start to lose accuracy.}\label{fig:mechanism}
+\end{figure}
 
 Quantization perturbs verifier scores enough to change the selected candidate on a
 quarter to a half of problems at 4 bits, yet accuracy barely moves. The reason is
@@ -118,6 +147,15 @@ problems where the BF16 PRM had picked an answer different from majority vote
 (exploratory).
 
 \subsection{Value retention where the verifier adds value (H7)}\label{sec:h7}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\linewidth]{figures/retention.pdf}
+\caption{Verifier advantage over majority vote (Best-of-32 accuracy minus majority
+vote@32) in BF16 (open circles) and with GPTQ-W4 (diamonds), for the 8B ORM and the PRM,
+across regimes. Main-study rows are exploratory subsets; H6 and H7 are separately
+preregistered studies on never-used problems.}\label{fig:retention}
+\end{figure}
 
 \todo{H7 results: weak generator, 1,060 unused Level 4--5 problems.}
 

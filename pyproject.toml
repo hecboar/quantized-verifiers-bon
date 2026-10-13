@@ -25,6 +25,7 @@ gpu = ["vllm==0.30.0", "bitsandbytes>=0.45"]
 # only for phase 6 (packed GPTQ kernels); may compile CUDA extensions
 packed = ["gptqmodel>=2.0", "optimum>=1.24"]
 dev = ["pytest>=8", "bitsandbytes>=0.45"]  # bnb: CPU parity test for NF4
+paper = ["matplotlib>=3.8"]  # scripts/make_figures.py
 
 [build-system]
 requires = ["hatchling"]

@@ -1,0 +1,9 @@
+regime,v,bf16,w4,confirmatory
+"Main study, all problems",sky-8b,0.8,0.95,False
+"Main study, MATH Level 5",sky-8b,4.411764705882353,5.588235294117648,False
+"Main study, all problems",prm-7b,4.45,4.15,False
+"Main study, MATH Level 5",prm-7b,7.0588235294117645,6.470588235294119,False
+"H7: weak generator, new Levels 4-5",sky-8b,3.018867924528301,2.7358490566037674,True
+"H7: weak generator, new Levels 4-5",prm-7b,8.207547169811313,7.641509433962257,True
+"H6: strong generator, new Level 5",sky-8b,-3.749999999999998,-3.749999999999998,True
+"H6: strong generator, new Level 5",prm-7b,0.12499999999999734,0.6249999999999978,True
