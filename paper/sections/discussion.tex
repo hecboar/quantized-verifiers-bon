@@ -1,0 +1,59 @@
+\section{Discussion}\label{sec:discussion}
+
+\paragraph{Deployment guidance.} For reward-model verifiers of 4B parameters and above,
+4-bit weight quantization (GPTQ, AWQ or NF4) is a safe default for Best-of-$N$
+selection on mathematical problems: across three preregistered settings, two
+generators, an ORM family and a PRM, the accuracy change stayed within about 1.5\pp\
+and the verifier's advantage over majority vote was largely preserved. Under a fixed
+memory budget, the freed memory is better spent on a larger quantized verifier than on
+a smaller full-precision one (c2). Three bits is not a safe default: it is harmless in
+some regimes (H6) but costs 2--4\pp\ in others (H7, main study) and is catastrophic for
+the 1.7B ORM, and the smallest verifier is also sensitive to the quantization method
+(RTN versus GPTQ).
+
+\paragraph{Why quantization rarely matters, and when it could.} Best-of-$N$ only needs
+the top of the ranking to keep a correct answer, and candidate pools are redundant:
+many candidates share the same final answer. Quantization perturbs scores enough to
+change the selected candidate on a quarter to a third of problems, yet the new winner
+usually carries the same answer. The risk is concentrated on contested problems, where
+competing answers have similar support and the verifier's preference is what decides;
+there, coarse quantization does tip choices (3 bits), and in our H6 and H7 data the
+perturbation tends to move the selection towards the consensus answer. This suggests
+that quantization damage should grow with the share of contested problems and with how
+much a verifier's decisions depart from the consensus, rather than with nominal
+difficulty or with $N$, which is consistent with our unsupported difficulty and budget
+hypotheses (c4, c5).
+
+\paragraph{How much a verifier is worth.} The question ``does quantization destroy the
+value a verifier adds?'' presupposes that the verifier adds value. With the weak
+generator the Skywork ORMs were within about one point of majority vote overall, and
+with a strong math generator on hard problems majority vote matched the PRM and beat the
+ORM by 3.8\pp. Only in a regime selected for verifier advantage (H7) did both verifiers
+clearly beat majority vote. Practitioners should measure a verifier against
+self-consistency on their own generator before paying its memory and latency cost.
+
+\paragraph{Evaluating selection.} Three practices changed our conclusions or their
+size. (i) A strict answer grader turned a reward-model preference for prose answers into
+apparent quantization ``gains'' of up to 8\pp; a format/content decomposition and a
+lenient grader removed them, and exhaustive blinded human grading reduced the registered
+memory-frontier effect from 2.25 to 1.4\pp. (ii) A fixed-precision null control (same
+weights, different batch layout) changes 5--15\% of winners across our studies; winner-change rates without
+such a floor overstate instability. (iii) Development-set signals that motivated two
+registered hypotheses did not replicate on 1,200 evaluation problems; preregistering
+them made the non-replication visible rather than leaving it in a file drawer.
+
+\paragraph{Limitations.} The ORMs come from a single family (Skywork-Reward-V2, built on
+Qwen3), the PRM is a Qwen model and the generators are Qwen and Llama models, so
+family-specific robustness cannot be excluded. Accuracy experiments use simulated
+quantization; packed 4-bit kernels agreed with it on 98.8--99.2\% of selected answers,
+but we measured memory, not latency or throughput. The tasks are GSM8K and MATH, whose
+test problems may have been seen during pre-training of the generators and verifiers;
+contamination affects BF16 and quantized verifiers equally because both score the same
+frozen pools, but it can change pool redundancy and verifier advantage. Candidates were
+capped at 1,024 or 2,048 tokens, and 6.5--19\% reached the cap, although excluding them
+does not change any conclusion. The value-retention result is confirmatory for the PRM
+and only narrowly so for the ORM, and we did not find a strong-generator regime in which
+the verifiers clearly beat majority vote, so retention of a large advantage under a
+strong generator remains untested. The analysis plans were fixed in version control
+before the corresponding data were generated or scored; we did not use an external
+registry.
