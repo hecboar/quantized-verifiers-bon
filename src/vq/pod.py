@@ -37,7 +37,7 @@ class PodSpec:
         return {
             "name": self.name,
             "imageName": self.image,
-            "gpuTypeIds": [self.gpu_type],
+            "gpuTypeIds": [g.strip() for g in self.gpu_type.split(",")],  # first available wins
             "gpuCount": 1,
             "cloudType": self.cloud_type,
             "containerDiskInGb": self.container_disk_gb,

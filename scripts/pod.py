@@ -77,7 +77,7 @@ def cmd_launch(a):
     if requires_gate(a.step) and not gate_allows(ROOT / "outputs" / "gate.json") and not a.force:
         sys.exit("refusing: this step spends grid budget and outputs/gate.json does not say go "
                  "(run the phase-1 gate first, or pass --force deliberately)")
-    spec = PodSpec(name=unique_pod_name(a.step), cloud_type=a.cloud,
+    spec = PodSpec(name=unique_pod_name(a.step), cloud_type=a.cloud, gpu_type=a.gpu,
                    env={"HF_TOKEN": env["HF_TOKEN"], "PUBLIC_KEY": pub.read_text().strip()})
     cmd = bootstrap_command(a.step, max_hours=a.hours, workdir=REMOTE, extras=a.extras, grace_minutes=a.grace,
                             install_minutes=a.install_minutes)
@@ -221,6 +221,8 @@ def main():
     s.add_argument("--extras", default="gpu", help='pip extras; phase 6 needs "gpu,packed"')
     s.add_argument("--install-minutes", type=int, default=30, help="cap for pip install (phase 6: 75)")
     s.add_argument("--force", action="store_true", help="launch a grid step without a passing gate (deliberate)")
+    s.add_argument("--gpu", default="NVIDIA GeForce RTX 4090",
+                   help="RunPod GPU type id, or a comma-separated list (first available is used)")
     s.add_argument("--no-packed", action="store_true", help="leave outputs/packed out of the bundle (saves ~7 GB upload)")
     s.add_argument("--watch", action="store_true", help="after launching, watch until done, fetch and delete")
     s.add_argument("--yes", action="store_true")
