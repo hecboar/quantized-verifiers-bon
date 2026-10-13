@@ -1,5 +1,5 @@
-4-bit reward-model verifiers select Best-of-N math answers as well as BF16 ones
-Equivalence replicates with a stronger generator and on 1,060 new hard problems
-Where the verifier beats majority vote, 4 bits keep most of its advantage
-Under a memory budget, a larger 4-bit verifier beats a smaller full-precision one
-Answer redundancy explains robustness; 3-bit weights and small verifiers fail
+GPTQ-W4 meets prespecified Best-of-32 accuracy-equivalence bounds
+A 4-bit PRM retains an estimated 93% of its advantage on new hard problems
+Packed 4-bit weights win the tested verifier-only memory comparison
+Frequent candidate changes coexist with small aggregate accuracy changes
+Answer-format errors of strict graders inflate estimated quantization gains

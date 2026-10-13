@@ -1,45 +1,78 @@
 \section{Experimental setup}\label{sec:setup}
 
-All design decisions below were fixed in a public preregistration before any
-evaluation candidate was scored; amendments were registered before the data they
-concern existed (Section~\ref{sec:prereg}). Code, frozen manifests and all scores
-are released.\todo{repository URL}
+\subsection{Analysis plans}\label{sec:plans}
+
+The design, estimands and tests were specified prospectively in a version-controlled
+repository, with a stated chronology (Table~\ref{tab:chronology} in
+\ref{app:deviations}). For the main study the plan and its amendments were committed
+after the candidate pools had been generated but before any verifier score on the
+evaluation problems existed; only generator-side statistics (accuracy, share of
+extractable answers, truncation) had been inspected at that point. The two follow-up
+studies were fixed, with their problem manifests and analysis code, before their
+candidates were generated. We did not use an external registry, so the commit history
+is the record of what was fixed when. Hypotheses are labelled c1--c5 (main study),
+H6a/b and H7a/b (follow-up studies); results not covered by these tests are
+exploratory and labelled as such.
 
 \subsection{Problems and candidate pools}\label{sec:pools}
 
-The registered evaluation set has 2,000 problems: 800 from the GSM8K test split
-\cite{cobbe2021gsm8k}, 400 problems sampled from MATH500 \cite{lightman2023verify}, and 800
-further MATH test problems \cite{hendrycks2021math} outside MATH500, sampled with a
-fixed seed (text-level exclusion against MATH500 and the development set). A
-development set of 400 problems (200 GSM8K train, 200 MATH train) was used only
-for the go/no-go gate and for choices that the preregistration assigns to
-development data.
+Table~\ref{tab:populations} lists every population. The main evaluation set has 2,000
+problems: 800 from the GSM8K test split \cite{cobbe2021gsm8k}, 400 sampled from MATH500
+\cite{lightman2023verify}, and 800 further MATH test problems \cite{hendrycks2021math}
+outside MATH500, sampled with a fixed seed. The first 1,200 (GSM8K and MATH500) form the
+original manifest, frozen before the MATH extension was added, and are the registered
+population of c1. A development set of 400 problems (200 GSM8K train, 200 MATH train) was
+used only for the go/no-go gate and for choices assigned to development data.
 
-The primary generator is Qwen2.5-1.5B-Instruct \cite{qwen2.5}. For every problem it
+\begin{table}[!htb]
+\centering
+\small
+\caption{Problem populations. ``New'' problems appear nowhere else in this work
+(text-level exclusion against all other items and against all of MATH500).}\label{tab:populations}
+\begin{tabular}{lrll}
+\toprule
+population & $n$ & composition & used for \\
+\midrule
+Main, full & 2,000 & 800 GSM8K + 400 MATH500 + 800 MATH test & c2, Table~\ref{tab:main} \\
+Main, original manifest & 1,200 & 800 GSM8K + 400 MATH500 & c1 \\
+Main, MATH & 1,200 & 400 MATH500 + 800 MATH test & c4, c5 \\
+H6 & 800 & MATH test Level 5 (new) & H6a/b \\
+H7 & 1,060 & MATH test Level 4 (905) + Level 5 (155), new & H7a/b \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The main generator is Qwen2.5-1.5B-Instruct \cite{qwen2.5}. For every problem it
 produces a pool of 32 candidates (4 seeds $\times$ 8 samples, temperature 0.8,
 top-$p$ 1.0, at most 1,024 new tokens) with the system prompt ``Please reason step by
 step, and put your final answer within \texttt{\textbackslash boxed\{\}}.'' Pools are
-generated once in BF16 with vLLM \cite{kwon2023vllm}, frozen and hashed; every verifier
-and precision scores exactly the same candidates. Candidate accuracy is 52.1\%, 88.7\%
-of candidates have an extractable final answer, and 6.5\% reach the length limit. A
-secondary generator, Llama-3.2-3B-Instruct, produces pools for a 300-problem subset
-(exploratory; Section~\ref{sec:robustness}).
+generated once in BF16 with vLLM 0.30 \cite{kwon2023vllm}, frozen and hashed; every
+verifier and precision scores exactly the same candidates. Candidate accuracy is
+52.1\%, 88.7\% of candidates have an extractable final answer, and 6.5\% reach the
+length limit. A secondary generator, Llama-3.2-3B-Instruct, produces pools for a
+300-problem subset (exploratory; Section~\ref{sec:robustness}).
 
 \subsection{Verifiers}\label{sec:verifiers}
 
-We use three outcome reward models (ORMs) of one family, Skywork-Reward-V2-Qwen3 at
-1.7B, 4B and 8B parameters \cite{skywork2025v2}, which score the full (question,
-response) pair with a scalar head, and one process reward model (PRM),
-Qwen2.5-Math-PRM-7B \cite{zhang2025prm}, whose step rewards are aggregated by their
-minimum. Both families are run with their documented input formats.\footnote{Under
-recent versions of \texttt{transformers}, the PRM's remote code leaves its rotary
-position buffers uninitialised after loading; all PRM results use buffers recomputed
-as in the model's own initialisation, checked at every load (\ref{app:prm}).}
+The main study uses three outcome reward models (ORMs) of one family,
+Skywork-Reward-V2-Qwen3 at 1.7B, 4B and 8B parameters \cite{skywork2025v2}, and one
+process reward model (PRM), Qwen2.5-Math-PRM-7B \cite{zhang2025prm}. The Skywork models
+are general preference reward models, trained on broad human-preference data rather
+than on mathematical correctness; we use them as outcome verifiers by scoring the full
+(problem, response) pair with their scalar head. The PRM is trained for mathematical
+step correctness; its step rewards are aggregated by their minimum (the last-step
+reward is reported as a sensitivity analysis). To test generality beyond this family,
+two further ORMs on a different backbone are evaluated in exploratory experiments:
+Skywork-Reward-V2-Llama-3.1-8B (same training-data family, Llama~3.1 backbone) and
+Llama-3.1-Tulu-3-8B-RM \cite{lambert2024tulu3} (different laboratory and data). All
+models are run with their documented input formats (\ref{app:impl}).
 
 \subsection{Precisions and deployments}\label{sec:precisions}
 
-Weights of all linear layers inside the transformer blocks are quantized; embeddings,
-norms and the reward head stay in BF16. The registered conditions are:
+Quantization is weight-only: the weights of all linear layers inside the transformer
+blocks are quantized, while embeddings, norms and the reward head stay in BF16, and
+activations and computation stay in BF16. ``BF16'' denotes the uncompressed model. The
+conditions are:
 \begin{itemize}
 \item \textbf{NF4}: 4-bit NormalFloat \cite{dettmers2023qlora}, both simulated and
 deployed with \texttt{bitsandbytes} (bit-identical scores);
@@ -50,59 +83,78 @@ size 128, calibrated on 128 WikiText-2 sequences of 512 tokens (generic calibrat
 \end{itemize}
 Accuracy experiments use simulated (``fake'') quantization: weights are quantized and
 dequantized to BF16, so only the rounding changes. For the memory study, GPTQ-W4 models
-are exported and run with packed 4-bit kernels (\texttt{gptqmodel}, Marlin); packed
-and simulated GPTQ-W4 select the same final answer on 98.8--99.2\% of questions, with
-symmetric correctness flips (0.35--0.55\% of questions). Every quantized model is
-audited: all target layers must change and no other parameter may change.
+are exported and run with packed 4-bit kernels (\texttt{gptqmodel}, Marlin). Every
+quantized model is audited: all target layers must change and no other parameter may
+change.
 
-Verifier memory is the peak allocated GPU memory (GiB) while scoring a fixed workload of
-64 sequences of 900 tokens on an RTX 4090, with no generator resident: 4.0/9.9/17.0 GiB
-for the 1.7B/4B/8B ORMs in BF16, 2.1/4.9/7.4 GiB with packed GPTQ-W4 and 2.1/5.1/7.7 GiB
-with NF4.
+Verifier memory is the peak allocated GPU memory, in GiB ($2^{30}$ bytes), while
+scoring a fixed workload of 64 sequences of 900 tokens on an RTX 4090 with no generator
+resident.
 
 \subsection{Selection rules and baselines}\label{sec:selection}
 
-Best-of-$N$ selects the highest-scoring candidate among $N$; ties are broken by a fixed
-random priority (seed 11) shared by all conditions. For $N<32$, accuracy is averaged
-over 200 random subsets per problem, drawn identically for every condition (seed 7);
-$N=32$ is the full pool. Selection-free baselines are unweighted majority vote over
-canonical answer clusters (numeric normalisation, then symbolic equivalence with
-\texttt{math\_verify}; unparseable candidates do not vote), the oracle (pass@32) and a
-random candidate.
+Best-of-$N$ selects the highest-scoring candidate among $N$; exact score ties are broken
+by a fixed random priority (seed 11) shared by all conditions. For $N<32$, accuracy is
+averaged over 200 random subsets per problem, drawn identically for every condition
+(seed 7); $N=32$ is the full pool. Two verifier-free baselines are reported. Majority
+vote is a plurality vote over canonical answer clusters (numeric normalisation, then
+symbolic equivalence with \texttt{math\_verify}): candidates without an extractable
+answer do not vote, the most frequent cluster wins, ties go to the tied cluster that
+appears first in candidate order, a pool without any extractable answer counts as
+incorrect, and the vote is correct if its cluster contains a correct candidate. It does
+not depend on the verifier. The oracle (pass@32) is correct if any candidate is.
 
 \subsection{Grading}\label{sec:grading}
 
-The registered grader extracts the last \texttt{\textbackslash boxed\{\}} answer (else a GSM8K-style
-``\#\#\#\#'' line or an explicit ``the answer is'' phrase), normalises numbers and compares symbolically for
-MATH. Because a strict grader can confound verifier preferences with answer format, we
-report three checks: a lenient grader (the last number or expression in the final
-lines when no boxed answer exists; sensitivity only), a blinded human audit, and a
-re-grading of GSM8K with the revised GSM8K-Platinum labels \cite{vendrow2025platinum}.
+The registered grader extracts the last \texttt{\textbackslash boxed\{\}} answer (else a
+GSM8K-style ``\#\#\#\#'' line or an explicit ``the answer is'' phrase), normalises
+numbers and compares symbolically for MATH. Because a strict grader can confound
+verifier preferences with answer format, we report three checks: a lenient grader (the
+last number or expression in the final lines when no answer is extractable; sensitivity
+only), a blinded human audit (\ref{app:audit}), and a re-grading of GSM8K with the
+revised GSM8K-Platinum labels \cite{vendrow2025platinum}. The endpoint throughout is
+final-answer correctness.
 
 \subsection{Metrics and controls}\label{sec:metrics}
 
 For verifier $v$ and condition $c$, $A_N$ is Best-of-$N$ accuracy and
-$\Delta_N = A_N^{c} - A_N^{\mathrm{BF16}}$, computed per problem and averaged. We also
-report the winner-change rate (the selected candidate differs from BF16's), and its
-split into harm (a correct BF16 selection becomes wrong) and benefit (the reverse).
-Two controls bound numerical noise: \emph{bf16-null} rescores in BF16 with a different
-batch layout, and \emph{bf16-repeat} rescores with the same layout; the latter is
-bit-identical, the former changes the winner on 7--11\% of problems with $|\Delta_{32}|
-\le 0.3$\pp.
+$\Delta_N = A_N^{c} - A_N^{\mathrm{BF16}}$, computed per problem and averaged. At
+$N=32$ we also report answer transitions relative to BF16: the share of problems whose
+selected candidate changes, whose selected canonical answer changes, whose correct BF16
+selection becomes wrong (harm) and the reverse (benefit), so that $\Delta_{32}$ equals
+benefit minus harm. Two controls characterise numerical sensitivity: \emph{bf16-null}
+rescores in BF16 with a different batch layout, and \emph{bf16-repeat} rescores with the
+same layout. The latter is bit-identical; the former changes the selected candidate on
+7--11\% of main-study problems with $|\Delta_{32}| \le 0.3$\pp.
 
-\subsection{Statistics and preregistration}\label{sec:prereg}
+\subsection{Statistics}\label{sec:stats}
 
-Intervals are 95\% paired percentile bootstrap intervals over problems (10,000
-resamples); $p$-values are two-sided centred-bootstrap $p$-values with resolution
-$10^{-4}$. Equivalence is tested by two one-sided tests (TOST) at a $\pm3$\pp\ margin,
-implemented by inverting the percentile interval (simulated size at the margin:
-0.056/0.024/0.006 at nominal 0.05/0.025/0.0125).
-
-The main study registered five confirmatory contrasts with Holm correction: c1,
-$\Delta_{32}$ of the 8B ORM at GPTQ-W4 (equivalence); c2, the best development-selected
-deployment versus the best BF16 deployment under a 6~GB verifier memory ceiling; c3, a
-calibration method that was not run (kept in the family with $p=1$); c4, $\Delta_{32}$
-on MATH (4B and 8B averaged); c5, the growth of the MATH loss from $N=4$ to $N=32$.
-Two follow-up studies were registered after the main results, each with its own family
-of four tests (Sections~\ref{sec:h6} and~\ref{sec:h7}). All deviations are listed in
-\ref{app:deviations}.
+All inference uses a paired percentile bootstrap over problems with 10,000 resamples
+(seed 7). Problems are resampled with replacement from the full population, and every
+quantity computed on a problem (both conditions, all verifiers entering a contrast, the
+majority-vote outcome) is resampled jointly, so within-problem correlations are kept.
+\begin{itemize}
+\item \emph{Differences} are reported with 95\% percentile intervals and two-sided
+centred-bootstrap $p$-values.
+\item \emph{Equivalence} at the registered $\pm3$\pp\ margin is tested by two one-sided
+tests (TOST): $p_{\mathrm{TOST}} = \max\{P^*(\bar d \le -0.03),\, P^*(\bar d \ge 0.03)\}$,
+which inverts the percentile interval ($p_{\mathrm{TOST}} \le \alpha$ if and only if the
+$(1-2\alpha)$ interval lies inside the margin). In a simulation at the margin
+($n=800$, skewed three-valued per-problem differences, 2,000 replicates) the rejection
+rate was 0.056, 0.024 and 0.006 at nominal 0.05, 0.025 and 0.0125 (Monte Carlo standard
+error about 0.005).
+\item \emph{Value retention} (H6b, H7b) is one-sided: $p = P^*(\bar R \le 0)$
+(Section~\ref{sec:h6}).
+\item \emph{Resolution}: when no resample exceeds the boundary we report
+$p \le 10^{-4}$ (and $\le m \cdot 10^{-4}$ after Holm adjustment of the $m$-th smallest
+$p$-value), never $p=0$.
+\item \emph{Multiplicity}: Holm correction within each prespecified family (c1--c5;
+H6a/b; H7a/b); a test of the family that was not run keeps $p=1$. The registered
+decision rule for c1 is that its 90\% interval lies inside $\pm3$\pp.
+\end{itemize}
+\noindent The registered contrasts are: c1, $\Delta_{32}$ of the 8B ORM at GPTQ-W4 on
+the original 1,200-problem manifest (equivalence); c2, the development-selected
+deployment versus the best BF16 deployment under the 6~GB verifier memory ceiling; c3, a
+calibration method that was not run; c4, $\Delta_{32}$ on the 1,200 MATH problems (4B and
+8B ORMs, GPTQ-W4, averaged within problem); c5, the change of that loss from $N=4$ to
+$N=32$. Table~\ref{tab:confirmatory} summarises every confirmatory test.

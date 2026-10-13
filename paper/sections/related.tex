@@ -1,61 +1,73 @@
 \section{Related work}\label{sec:related}
 
-\paragraph{Verifiers and test-time compute.} Training a verifier to rank sampled
-solutions was introduced for grade-school mathematics by Cobbe et al.~\cite{cobbe2021gsm8k}. Process
-supervision, which scores every reasoning step, outperforms outcome supervision on MATH
-\cite{lightman2023verify}, and automatically labelled PRMs
-\cite{wang2023mathshepherd,setlur2024rewarding,zhang2025prm} and generative verifiers
-\cite{zhang2024generative} have followed. How to spend inference compute between
-sampling and verification has become a research question in itself
+\paragraph{Verifiers and test-time compute} Training a verifier to rank sampled
+solutions was introduced for grade-school mathematics by Cobbe et
+al.~\cite{cobbe2021gsm8k}. Process supervision, which scores every reasoning step,
+outperforms outcome supervision on MATH \cite{lightman2023verify}, and automatically
+labelled PRMs \cite{wang2023mathshepherd,setlur2024rewarding,zhang2025prm} and
+generative verifiers \cite{zhang2024generative} have followed. How to spend inference
+compute between sampling and verification has become a research question in itself
 \cite{snell2024scaling,liu2025can,singhi2025when}. These works study what verifiers can
-achieve at full precision; the cost of the verifier itself enters only as a fixed term.
+achieve at full precision; the verifier's own cost enters only as a fixed term.
 
-\paragraph{Reward models against self-consistency.} Majority vote over sampled answers
+\paragraph{Reward models against self-consistency} Majority vote over sampled answers
 (self-consistency) needs no verifier \cite{wang2023selfconsistency}, and its coverage
 and accuracy keep growing with the number of samples
 \cite{brown2024large,wu2024inference}. Whether a reward model beats it depends on the
 generator, the reward model and the aggregation rule
-\cite{yuan2024free,di2025bestofmajority}. Most relevant to us, Kim et al.~\cite{kim2025not}
-compare memory-optimal test-time strategies for reasoning models and find that an
-external 7B PRM, counted at full precision, is consistently less memory-efficient than
-majority voting. We complement this result from the verifier side: quantizing the
-verifier removes most of that memory cost without changing its selections, so the
-comparison should be made against quantized verifiers.
+\cite{yuan2024free,di2025bestofmajority}; calibrated combinations of answer frequency
+and PRM scores can outperform both \cite{kuang2025aggregation}. In a study of
+memory-optimal test-time strategies for reasoning models, Kim et
+al.~\cite{kim2025not} include a Best-of-$N$ experiment with an external 7B PRM counted
+at full precision (13.28\,GB; Section~4.1 of the ICLR 2026 version) and find it less
+memory-efficient than majority voting. Their main analysis quantizes the generator and
+excludes verifiers by design. Our study addresses the complementary question: how much
+of a verifier's cost can be removed by quantizing the verifier itself, and whether its
+selections survive.
 
-\paragraph{Reward-model reliability.} Reward-model quality is usually measured on
+\paragraph{Cheaper verification} Other routes reduce the cost of Best-of-$N$
+verification without compressing the reward model: rejecting low-scoring generations
+early \cite{sun2024speculative}, learning lightweight rewards from the generator's
+hidden states \cite{guo2025swift}, or scoring from the generator's key--value cache
+instead of re-encoding the text \cite{kuang2026kvprm}. These change what is computed;
+weight quantization keeps the verifier and its inputs unchanged and only lowers the
+precision of its weights, so it can be combined with them.
+
+\paragraph{Reward-model reliability} Reward-model quality is usually measured on
 preference and step-error benchmarks \cite{lambert2024rewardbench,zheng2024processbench,
 song2025prmbench}, and Best-of-$N$ is known to over-optimise imperfect reward models
-\cite{gao2023overoptimization}. Our question is different: not whether a reward model is
-accurate, but whether a compressed copy of it makes the same selections as the original.
+\cite{gao2023overoptimization}. Our question is different: not whether a reward model
+is accurate, but whether a compressed copy of it selects as well as the original.
 
-\paragraph{Post-training quantization of language models.} Post-training quantization
+\paragraph{Post-training quantization of language models} Post-training quantization
 reduces memory with little loss of perplexity or task accuracy at 8 bits
 \cite{dettmers2022llmint,xiao2022smoothquant} and, for weights only, at 4 bits
-\cite{frantar2023gptq,lin2024awq,dettmers2023qlora},
-4-bit precision is close to optimal for a fixed bit budget \cite{dettmers2022the}, and
-large evaluations confirm that well-calibrated 4- and 8-bit models track their
-full-precision versions \cite{kurtic2024give}; the topic is active in this journal as
-well \cite{zhu2027rotsq,bang2027bvsr}. For reasoning, quantization of the
-\emph{generator} hurts more at 3 bits and on harder problems
-\cite{liu2025quantization,li2025quantization}. Aggregate accuracy can also hide many
-changed answers: compressed models keep their accuracy while flipping a sizeable share
-of individual outputs \cite{dutta2024accuracy}. Our winner-change analysis applies this
-observation to selection, where a changed winner usually carries the same answer.
+\cite{frantar2023gptq,lin2024awq,dettmers2023qlora}; 4-bit precision is close to optimal
+for a fixed bit budget \cite{dettmers2022the}, and large evaluations find that
+well-calibrated 4- and 8-bit models track their full-precision versions
+\cite{kurtic2024give}. The topic is active in this journal as well
+\cite{zhu2027rotsq,bang2027bvsr}. For reasoning, quantizing the \emph{generator} hurts
+more at 3 bits and on harder problems \cite{liu2025quantization,li2025quantization}.
+Aggregate accuracy can also hide many changed outputs: compressed models keep their
+accuracy while flipping a sizeable share of individual answers
+\cite{dutta2024accuracy}. We measure the analogue for selection: how often the selected
+candidate, and how often its answer, changes.
 
-\paragraph{Quantized evaluators.} The closest work quantizes LLM-as-judge models:
-Patira~\cite{patira2026quantizing} reports that INT8 judges stay within a preregistered
-equivalence margin of their full-precision agreement with humans, while NF4 flips a
-quarter to a third of pairwise verdicts on open-ended chat. We study scalar reward
-models used for Best-of-$N$ selection on problems with verifiable answers, several
-quantization methods, a memory frontier with packed kernels, and selection value relative
-to majority vote. To our knowledge, no prior work quantizes the verifier in Best-of-$N$
-and measures the effect on selection.
+\paragraph{Quantized evaluators} The closest work quantizes LLM-as-judge models: a
+concurrent workshop submission \cite{anon2026judges} reports that INT8 judges keep
+their agreement with human labels within a preregistered equivalence region on
+pairwise chat comparisons, while NF4 flips a quarter to a third of verdicts and lowers
+one judge's agreement. We study scalar reward models used for Best-of-$N$ selection on
+problems with verifiable answers, several quantization methods, a memory comparison
+with packed kernels, and the verifier's advantage over majority vote. We did not find
+prior work that quantizes the verifier in Best-of-$N$ and measures the effect on
+selection.
 
-\paragraph{Evaluation practice.} Math benchmark results are sensitive to answer
+\paragraph{Evaluation practice} Math benchmark results are sensitive to answer
 extraction, contamination and label errors \cite{zhang2024a,vendrow2025platinum,
-hochlehnert2025a,biderman2024lessons}, and reporting confidence intervals is still
-uncommon \cite{miller2024adding}. Preregistration has been proposed for predictive
-modelling \cite{hofman2023preregistration} but remains rare in machine learning. We fix
-the analysis plans before the data exist, report statistical uncertainty for every
-contrast, and check the outcome measure with blinded human grading, revised labels and a
-lenient grader.
+hochlehnert2025a,biderman2024lessons}, and confidence intervals are still uncommon in
+model evaluations \cite{miller2024adding}. Preregistration has been proposed for
+predictive modelling \cite{hofman2023preregistration} but remains rare in machine
+learning. We specify the analysis plans prospectively in version control, report
+uncertainty for every contrast, and check the outcome measure with a lenient grader, a
+human audit and revised labels.

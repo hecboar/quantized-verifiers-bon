@@ -1,67 +1,102 @@
 \section{Implementation details}\label{app:impl}
 
-\paragraph{Prompt.} Every generator receives the system prompt ``Please reason step by
+\paragraph{Prompt} Every generator receives the system prompt ``Please reason step by
 step, and put your final answer within \texttt{\textbackslash boxed\{\}}.'' and the
 problem as the user turn, through its chat template. For Llama-3.2-3B the instruction is
 repeated at the end of the user turn (registered deviation; without it 34\% of its
 candidates had no extractable answer).
 
-\paragraph{Verifier inputs.} The Skywork ORMs receive the (problem, response) pair as a
-user/assistant conversation without system prompt and output a scalar from their reward
-head. The PRM receives its documented system prompt, the problem, and the response split
-into steps at blank lines, separated by its step token; the score is the minimum step reward (the last-step reward is stored for
-sensitivity).
+\paragraph{Verifier inputs} The ORMs (Skywork-Reward-V2-Qwen3 1.7B/4B/8B,
+Skywork-Reward-V2-Llama-3.1-8B, Llama-3.1-Tulu-3-8B-RM) receive the (problem, response)
+pair as a user/assistant conversation formatted by their chat template, without system
+prompt, with a single beginning-of-sequence token, and output a scalar from their reward
+head; the padding token never occurs inside a sequence (checked). Tulu-3-8B-RM does not
+define a padding id in its configuration, so the tokenizer's padding token is set. The
+PRM receives its documented system prompt, the problem, and the response split into
+steps at blank lines, separated by its step token; the score is the minimum step reward
+and the last-step reward is stored for sensitivity analysis.
 
-\paragraph{Quantization.} All linear layers inside the transformer blocks are quantized;
-embeddings, norms and the reward head stay in BF16. GPTQ uses group size 128, symmetric
-quantization and 1\% diagonal damping, calibrated on 128 WikiText-2 sequences of 512
-tokens with a fixed seed. Every quantized model is audited by fingerprinting all
-parameters before and after quantization: every target layer must change (252 of 252
-for the 8B ORM, 196 of 196 for the PRM) and no other parameter may change.
+\paragraph{Quantization} All linear layers inside the transformer blocks are quantized
+(weight-only); embeddings, norms and the reward head stay in BF16, and activations stay
+in BF16. GPTQ uses group size 128, symmetric quantization and 1\% diagonal damping,
+calibrated on 128 WikiText-2 sequences of 512 tokens drawn with a fixed seed. AWQ uses
+the same calibration and group size; NF4 uses \texttt{bitsandbytes} without double
+quantization; RTN uses group size 128 at 4 bits and per-channel scales at 8 bits. Every
+quantized model is audited by fingerprinting all parameters before and after
+quantization: every target layer must change (e.g.\ 252 of 252 for the 8B ORM, 196 of
+196 for the PRM) and no other parameter may change.
 
-\paragraph{PRM rotary buffers.}\label{app:prm} Under recent versions of
-\texttt{transformers}, Qwen2.5-Math-PRM-7B's remote modelling code is instantiated on the
-meta device and its non-persistent rotary-embedding buffers come back uninitialised
-after loading. Scores computed this way were below the random-candidate rate. We
-recompute the buffers exactly as the model's own initialisation does and check them at
-every load; all PRM results in this paper use repaired buffers, and the affected scores
-were discarded (registered deviation).
+\paragraph{PRM rotary buffers}\label{app:prm} With \texttt{transformers} 5.x,
+Qwen2.5-Math-PRM-7B's remote modelling code is instantiated on the meta device and its
+non-persistent rotary-embedding buffers come back uninitialised after loading. Scores
+computed this way were below the random-candidate rate. We recompute the buffers exactly
+as the model's own initialisation does and check them at every load; all PRM results in
+this paper use repaired buffers, and the affected scores were discarded (registered
+deviation).
 
-\paragraph{Compute.} All experiments ran on single cloud GPUs (mostly RTX 4090; some
-follow-up runs on L40S and other GPUs of at least 24~GB, with BF16 and quantized runs of
-a verifier always on the same GPU). The total cost of all experiments was about
-55~EUR.
+\paragraph{Software and compute} Generation used vLLM 0.30.0; scoring used PyTorch
+2.13.0 (CUDA 13.0) and \texttt{transformers} 5.17 (main study) or 5.19 (follow-up
+studies); packed kernels used \texttt{gptqmodel}. Model identifiers and all settings are
+recorded in the repository and in the metadata of every score file. All experiments ran on single cloud GPUs (mostly RTX 4090; some follow-up
+runs on L40S and other GPUs with at least 24~GB, with the BF16 and quantized runs of a
+verifier always on the same GPU), for roughly 90 GPU-hours in total including setup.
 
 \section{Blinded audit of the outcome measure}\label{app:audit}
 
-All 94 unique Best-of-32 winners without an extractable final answer in either arm of
-the registered memory-frontier contrast (c2), plus 30 random winners with one, were
-shown to a human rater (one of the authors) with the problem, the
-reference answer and the full response, rendered with mathematical typesetting, and
-nothing else; responses that reached the length limit were marked as such and graded as
-incorrect by a rule fixed beforehand. The rater judged 83 correct, 29 incorrect and 12
-unsure. A blinded second pass (same view, key unopened) re-examined every unsure and
-incorrect verdict, resolved all 12 unsure verdicts as incorrect (9 with wrong reasoning,
-3 with correct reasoning cut by the length limit) and confirmed every incorrect one; it
-also flagged two GSM8K problems with questionable labels, both of which GSM8K-Platinum
-removes. On the 30 controls the strict grader and the human agree on 29. On the 94
-winners without an extractable answer the strict grader scores all as wrong, the human
-judges 60 correct, and the lenient grader agrees with the human on 85.
+All 94 distinct Best-of-32 winners without an extractable final answer in either arm of
+the registered memory-budget contrast (c2), plus 30 random winners with one, were shown
+to a human rater (one of the authors) with the problem, the reference answer and the full
+response, rendered with mathematical typesetting, and nothing else. The endpoint was
+final-answer correctness; responses that reached the length limit were marked as such
+and counted as incorrect by a rule fixed beforehand, because they give no final answer.
+The rater judged 83 correct, 29 incorrect and 12 unsure. A blinded second pass (same view,
+key unopened) re-examined every unsure and incorrect verdict, resolved all 12 unsure
+verdicts as incorrect (9 with a wrong answer or reasoning, 3 cut by the length limit
+before giving an answer) and confirmed every incorrect one; it also flagged two GSM8K
+problems with questionable labels, both of which GSM8K-Platinum removes. With the first
+verdicts and unsure items dropped, the corrected c2 is $+1.41$\pp\ $[+0.35, +2.46]$
+instead of $+1.40$. On the 30 controls the strict grader and the human agree on 29. On
+the 94 winners without an extractable answer the strict grader scores all as wrong, the
+human judges 60 correct, and the lenient grader agrees with the human on 85. The audit
+covers only unparseable winners and was done by a single rater; residual grading error
+among parseable winners is not measured beyond the 30 controls.
 
 \section{Analysis plans and deviations}\label{app:deviations}
 
-The main study's plan registered five contrasts before any evaluation score was opened,
-and an amendment, made after candidate pools existed but before any verifier had scored
-them, renamed two hypotheses to match their estimands, fixed populations and test rules,
-and set a decision rule for the calibration study (c3, not run). The two follow-up
-studies were each fixed, with their item manifests and analysis code, before their
-candidates were generated, and their pool hashes were recorded before scoring. The deviations,
-all documented with dates in the repository, were: the Llama prompt repetition; the PRM
+Table~\ref{tab:chronology} lists the chronology recorded in the repository. The
+deviations, all documented with dates, were: the Llama prompt repetition; the PRM
 rotary-buffer repair and rescoring; the frozen calibration hyper-parameter of the unrun
-c3 method; exploratory additions after the main results (bit-width dose-response, the
-1.7B packed model in the frontier); in H6, the loss and regeneration of the first
-candidate pool (never inspected) and a scoring split across four GPUs; in H7, the use of
-GPUs other than the RTX 4090 for lack of availability and the computation of
-lenient-grader verdicts with time limits equivalent to those on Linux; and corrections
-to the follow-up analysis script made before H7 data existed, which reproduce all H6
-results exactly.
+c3 method (the registered decision rule permitted running c3, but at the registered
+4 bits the 8B ORM showed no MATH damage to repair, so it was not run and stays in the
+family with $p=1$); exploratory additions after the main
+results (bit-width dose-response, the 1.7B packed model in the frontier); in H6, the loss
+and regeneration of the first candidate pool (never inspected) and scoring split across
+four GPUs; in H7, GPUs other than the RTX 4090 for lack of availability and lenient-grader
+verdicts computed with time limits equivalent to those on Linux; corrections to the
+follow-up analysis script made before H7 data existed, which reproduce all H6 results
+exactly; and the exploratory revision experiments (additional reward models,
+task-matched 3-bit calibration, memory and throughput re-measurement), fixed before
+their launch.
+
+\begin{table}[!htb]
+\centering
+\scriptsize
+\caption{Chronology of plans and data (commit timestamps, 2026).}\label{tab:chronology}
+\begin{tabular}{lll}
+\toprule
+date & event & data existing at that point \\
+\midrule
+27 Sep & plan with c1--c3; evaluation and development manifests frozen & none \\
+27--28 Sep & go/no-go gate and early signal on development problems & development scores only \\
+28 Sep 11:20 & amendment 1: c4, c5 and the 800-problem MATH extension & development scores only \\
+28 Sep 11:43--14:00 & main-study candidate pools generated & candidates (generator statistics inspected) \\
+28 Sep 14:17 & amendment 2: populations, test rules, c3 decision rule, pool hashes & candidates, no verifier score \\
+28 Sep 14:17 onwards & main-study scoring and analysis & -- \\
+12 Oct 19:00 & H6 plan, manifests and analysis code frozen & none for H6 \\
+13 Oct 02:10 & H6 pool hashes recorded; scoring follows & H6 candidates \\
+13 Oct 13:17 & H7 plan frozen (same analysis code) & none for H7 \\
+13 Oct 14:27 & H7 pool hashes recorded; scoring follows & H7 candidates \\
+14 Oct 00:14 & revision experiments fixed (exploratory) & no score of the new runs \\
+\bottomrule
+\end{tabular}
+\end{table}

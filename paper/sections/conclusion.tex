@@ -1,19 +1,19 @@
 \section{Conclusion}\label{sec:conclusion}
 
 We asked whether the reward-model verifier in Best-of-$N$ mathematical answer selection
-can be quantized without losing what it is for. On frozen candidate pools, with analysis
-plans fixed before the data, the answer is yes at 4 bits for verifiers of 4B parameters
-and above: GPTQ-W4 keeps Best-of-32 accuracy within a $\pm3$\pp\ equivalence margin in
-the main study and in two follow-up studies with a stronger generator and with new hard
-problems, and where the verifier beats majority vote it keeps most of that advantage
-(93\% for the PRM). Under a fixed memory budget a larger quantized verifier is the better
-choice. Robustness comes from the selection task rather than from score fidelity:
-quantization changes the selected candidate often, but pools are redundant, so the
-selected answer rarely changes; 3-bit weights and the smallest verifier are where this
-breaks down. Two practical caveats travel with these results. Measure a verifier against
-majority vote on one's own generator, because with a strong generator it may add
-nothing; and evaluate selection with a grader that is robust to answer format, because a
-strict grader can turn format preferences into spurious effects of quantization.
+can be quantized without losing what it is for. On frozen candidate pools, with
+prospectively specified analysis plans, the tested 4-bit GPTQ deployments of verifiers
+with 4B parameters and above kept Best-of-32 accuracy within a $\pm3$\pp\ equivalence
+margin in the main study and in two follow-up studies, and where the verifier beat
+majority vote they kept more than half of that advantage (an estimated 93\% for the
+PRM). Under the tested 6~GB verifier budget, the 4B ORM with packed 4-bit weights was
+the best tested deployment. Quantization changes the selected candidate often, but the
+selected answer much less often, consistent with answer redundancy in the pools; 3-bit
+GPTQ with generic calibration and the smallest verifier are where selection degrades.
+Two practical caveats travel with these results. Compare a verifier against majority
+vote on one's own generator, because with a strong generator it may add little; and
+evaluate selection with a grader that is robust to answer format, because a strict
+grader can turn format preferences into spurious effects of quantization.
 
 \section*{CRediT authorship contribution statement}
 

@@ -9,51 +9,46 @@ reasoning step. In deployment it competes with the generator for accelerator mem
 natural way to make room is post-training quantization (PTQ) of the verifier's weights
 to 4 bits or fewer \cite{frantar2023gptq,lin2024awq,dettmers2023qlora}.
 
-Whether this is safe is not obvious. PTQ is usually evaluated by perplexity or by the
-accuracy of the quantized model on its own task, whereas a verifier only needs to
-\emph{rank} candidates correctly. Small score perturbations are harmless if they do not
-reorder the top of the ranking, but Best-of-$N$ amplifies errors at the top: as $N$
-grows, the selected candidate is increasingly the one whose score error is largest
+Whether this preserves selection quality is not obvious. PTQ is usually evaluated by
+perplexity or by the accuracy of the quantized model on its own task, whereas a
+verifier only needs to \emph{rank} candidates so that a correct one ends up on top.
+Small score perturbations are harmless if they do not change which answer wins, but
+Best-of-$N$ is sensitive to errors at the top of the ranking
 \cite{gao2023overoptimization}. One might therefore expect quantization damage to grow
-with the budget $N$ and with problem difficulty, and to matter most for small
-verifiers. Conversely, if quantized verifiers select as well as full-precision ones, a
-memory budget is better spent on a larger quantized verifier than on a smaller
-full-precision one.
+with the budget $N$ and with problem difficulty, and to matter most for small verifiers.
+Conversely, if quantized verifiers select as well as full-precision ones, a memory
+budget may be better spent on a larger quantized verifier.
 
-We study these questions in a preregistered, controlled setting. A fixed pool of 32
-candidates per problem is generated once and frozen, so that every verifier and every
-precision ranks exactly the same responses and differences in accuracy can only come
+We study these questions with frozen candidate pools and prospectively specified
+analysis plans. A pool of 32 candidates per problem is generated once, so every verifier
+and precision ranks exactly the same responses and differences in accuracy can only come
 from the verifier. We evaluate three ORM sizes and one PRM in BF16, NF4, GPTQ (4 and 3
-bits), AWQ and round-to-nearest, on 2,000 GSM8K and MATH problems, and measure memory
-with packed 4-bit kernels. Five contrasts were registered before any evaluation score
-was opened; two follow-up studies with a stronger generator and with new problems were
-registered before their data existed.
+bits), AWQ and round-to-nearest on 2,000 GSM8K and MATH problems, measure verifier memory
+with packed 4-bit kernels, and add two follow-up studies, with a stronger generator and
+with new hard problems, whose plans were fixed before their candidates were generated.
 
 Our contributions are:
 \begin{enumerate}
-\item \textbf{Equivalence at 4 bits.} Quantizing an 8B ORM with GPTQ-W4 leaves
-Best-of-32 accuracy unchanged within $\pm1.3$\pp\ (registered equivalence test at
-$\pm3$\pp), and the result replicates in two preregistered follow-up studies, with a 7B math
-generator and with the original generator on new hard problems, for both an ORM and a
-PRM. Three bits is where degradation
-starts, sharply so for the smallest verifier.
-\item \textbf{A memory-budget rule.} Under a 6~GB verifier budget, a 4B ORM with packed
-4-bit weights beats the best full-precision verifier that fits by 2.25\pp\ (registered;
-1.4\pp\ after correcting the strict grader with exhaustive blinded human grading).
-\item \textbf{A mechanism.} Quantization changes the selected candidate on a quarter to
-a third of problems at 4 bits, but rarely the correctness of the selected answer,
-because candidates are redundant: damage is confined to contested problems where
-competing answers have similar support, and quantization noise tends to move the
-selection towards the consensus answer.
-\item \textbf{Value retention.} Where the verifier beats majority vote, 4-bit
-quantization keeps most of that advantage: in a preregistered study on 1,060 new hard
-problems the PRM retains 93\% of an 8.2\pp\ advantage (the ORM 91\% of 3.0\pp, narrowly
-significant). With a strong generator, however, majority vote matches or beats
-reward-model selection on hard problems, which limits how much value a verifier can add
-in the first place.
-\item \textbf{Evaluation lessons.} Strict answer graders can turn reward-model format
-preferences into spurious quantization ``gains''; we show how a format/content
-decomposition, a lenient grader, a blinded human audit and revised labels resolve this, and
-report two registered hypotheses (damage grows with difficulty and with $N$) that the
-evaluation data did not support.
+\item \textbf{Accuracy equivalence at 4 bits.} GPTQ-W4 meets a registered $\pm3$\pp\
+equivalence bound for Best-of-32 accuracy of an 8B ORM (90\% interval $[-0.58, +1.25]$),
+and the result holds in two follow-up studies for both an ORM and a PRM. Three-bit GPTQ
+with generic calibration degrades selection, severely for the smallest verifier.
+\item \textbf{Retained verifier value.} In a follow-up study on 1,060 new hard problems,
+where the verifiers beat majority vote, 4-bit quantization keeps more than half of the
+advantage (prespecified test): the PRM retains an estimated 93\% of an 8.2\pp\
+advantage, the ORM 91\% of a 3.0\pp\ advantage (narrowly significant). With a strong
+generator, no clear verifier advantage over majority vote was established.
+\item \textbf{A tested memory comparison.} Under a 6~GB verifier-only budget and a fixed
+workload, a 4B ORM with packed 4-bit weights outperforms the best tested full-precision
+verifier that fits by 2.25\pp\ under the registered grader and 1.40\pp\ after a blinded
+human audit of unparseable winners.
+\item \textbf{Candidate-level instability without accuracy loss.} Quantization changes
+the selected candidate on a quarter to a half of problems at 4 bits, but the selected
+answer far less often; harm and benefit stay small and largely offset, consistent with
+answer redundancy in the pools.
+\item \textbf{Evaluation lessons.} A strict answer grader can turn reward-model format
+preferences into spurious quantization gains. We show how a format/content
+decomposition, a lenient grader, a blinded human audit and revised labels resolve this,
+and we report two registered hypotheses (damage concentrated on MATH, growing with $N$)
+that the evaluation data did not support.
 \end{enumerate}

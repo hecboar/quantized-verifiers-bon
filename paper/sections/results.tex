@@ -1,25 +1,67 @@
 \section{Results}\label{sec:results}
 
-\subsection{Four-bit verifiers select as well as BF16 verifiers}\label{sec:equivalence}
+Table~\ref{tab:confirmatory} summarises every confirmatory test; the subsections below
+give the details and the exploratory analyses around them.
 
-Table~\ref{tab:main} reports Best-of-32 accuracy on the 2,000 evaluation problems.
-The registered contrast c1 (8B ORM, GPTQ-W4, original 1,200-problem population) is
-$\Delta_{32} = +0.33$\pp\ with a 90\% interval of $[-0.58, +1.25]$, inside the
-registered $\pm3$\pp\ margin ($p_{\mathrm{TOST}} < 10^{-4}$): \textbf{equivalence is
-supported}. A 3\pp\ loss would have meant 13\% more errors relative to BF16; the
-interval also lies inside $\pm1.5$\pp\ (post hoc). The same holds across the
-exploratory grid at 4 bits: for the three ORMs and the PRM, GPTQ-W4 and NF4 change
-$A_{32}$ by between $-1.1$ and $+0.6$\pp, even though the selected candidate changes
-on 21--49\% of problems. Across budgets $N\in\{1,\dots,32\}$ the 4-bit curves track
-BF16 (Fig.~\ref{fig:curves}).
+\begin{table}[!htb]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\caption{All confirmatory tests. Accuracies are Best-of-32 (\%) under the registered
+grader; MV is the verifier-independent majority vote. Estimates in percentage points
+with 95\% intervals (c1: 90\%, its registered decision rule). $p$: raw bootstrap
+$p$-value (TOST for equivalence tests, one-sided for H6b/H7b); $p_{\mathrm{H}}$: Holm
+within the family. $p\le10^{-4}$: no resample beyond the boundary.}\label{tab:confirmatory}
+\begin{tabular}{lllrrrrlll}
+\toprule
+test & population & contrast & BF16 & Q & MV & estimate [CI] & $p$ & $p_{\mathrm{H}}$ & result \\
+\midrule
+c1 & main, 1,200 & 8B ORM, W4 vs BF16, $\pm3$ & 77.5 & 77.8 & 78.3 & $+0.33$ [$-0.58$, $+1.25$] & $\le10^{-4}$ & -- & equivalent \\
+c2 & main, 2,000 & 4B W4 packed vs 1.7B BF16 & 71.8 & 74.1 & 72.1 & $+2.25$ [$+1.05$, $+3.45$] & $\le10^{-4}$ & $\le$0.0005 & supported \\
+c3 & -- & calibration method (not run) & -- & -- & -- & -- & 1 & 1 & not tested \\
+c4 & main MATH, 1,200 & 4B+8B ORM, W4 vs BF16 & 67.1 & 66.5 & 64.8 & $-0.63$ [$-1.38$, $+0.08$] & 0.099 & 0.40 & not supported \\
+c5 & main MATH, 1,200 & loss growth $N$=4$\to$32 & -- & -- & -- & $-0.51$ [$-1.20$, $+0.16$] & 0.140 & 0.42 & not supported \\
+\midrule
+H6a & H6, 800 & 8B ORM, W4, $\pm3$ & 72.8 & 72.8 & 76.5 & $0.00$ [$-1.13$, $+1.13$] & $\le10^{-4}$ & $\le$0.0004 & equivalent \\
+H6a & H6, 800 & PRM, W4, $\pm3$ & 76.6 & 77.1 & 76.5 & $+0.50$ [$-0.50$, $+1.50$] & $\le10^{-4}$ & $\le$0.0003 & equivalent \\
+H6b & H6, 800 & 8B ORM, $R>0$ & & & & $-1.88$ [$-3.19$, $-0.63$] & 0.998 & 0.998 & not supported \\
+H6b & H6, 800 & PRM, $R>0$ & & & & $+0.56$ [$-0.63$, $+1.69$] & 0.182 & 0.365 & not supported \\
+\midrule
+H7a & H7, 1,060 & 8B ORM, W4, $\pm3$ & 59.0 & 58.7 & 55.9 & $-0.28$ [$-1.42$, $+0.85$] & 0.0001 & 0.0002 & equivalent \\
+H7a & H7, 1,060 & PRM, W4, $\pm3$ & 64.2 & 63.6 & 55.9 & $-0.57$ [$-1.32$, $+0.19$] & $\le10^{-4}$ & $\le$0.0004 & equivalent \\
+H7b & H7, 1,060 & 8B ORM, $R>0$ & & & & $+1.23$ [$-0.14$, $+2.59$] & 0.041 & 0.041 & supported \\
+H7b & H7, 1,060 & PRM, $R>0$ & & & & $+3.54$ [$+2.45$, $+4.72$] & $\le10^{-4}$ & $\le$0.0003 & supported \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Four-bit quantization preserves Best-of-32 accuracy}\label{sec:equivalence}
+
+The registered contrast c1 (8B ORM, GPTQ-W4, original 1,200-problem manifest, BF16
+accuracy 77.5\%) is $\Delta_{32} = +0.33$\pp\ with a 90\% interval of $[-0.58, +1.25]$,
+inside the registered $\pm3$\pp\ margin ($p_{\mathrm{TOST}} \le 10^{-4}$, which passes
+any Holm threshold of the family): \textbf{equivalence is supported}. On this population
+a 3\pp\ loss would have meant 13\% more errors. On the full 2,000 problems the same
+contrast is $+0.15$\pp\ $[-0.65, +0.95]$ (95\% interval; Table~\ref{tab:main}).
+
+Table~\ref{tab:main} gives the exploratory grid on the 2,000 problems. At 4 bits,
+GPTQ-W4 and NF4 change $A_{32}$ by between $-1.1$ and $+0.6$\pp\ for the three ORMs and
+the PRM, while the selected candidate changes on 21--49\% of problems; the 4-bit curves
+track BF16 at every budget $N\le32$ (Fig.~\ref{fig:curves}). Three bits is where
+selection degrades with this recipe: GPTQ-W3 costs 1.3--1.8\pp\ for the 4B, 8B and PRM
+verifiers and 13.2\pp\ for the 1.7B ORM, whose selection falls towards the
+random-candidate rate. The quantization method matters little at 4 bits for the 4B and
+8B ORMs (AWQ-W4: $0.00$ and $+0.55$\pp; round-to-nearest RTN-W4: $+0.25$ and
+$+0.90$\pp; RTN-W8 on the 8B: $+0.25$\pp), but the 1.7B ORM is sensitive to it: RTN-W4
+costs it $2.8$\pp\ $[-4.0, -1.7]$ against $1.1$\pp\ for GPTQ-W4.
 
 \begin{table}[!htb]
 \centering
 \small
-\caption{Best-of-32 accuracy (\%) and change versus BF16 (pp, 95\% CI), 2,000
-evaluation problems, Qwen2.5-1.5B-Instruct candidates. Winner change: share of
-problems whose selected candidate differs from BF16's. Majority vote: 72.1--72.7\%;
-oracle pass@32: 86.9\%; random candidate: 52.1\%.}\label{tab:main}
+\caption{Best-of-32 accuracy (\%) and change versus BF16 (pp, 95\% CI), main study
+(2,000 problems, Qwen2.5-1.5B-Instruct candidates). Winner change: share of problems
+whose selected candidate differs from BF16's. Verifier-free baselines: majority vote
+72.1\%, oracle pass@32 86.9\%, random candidate 52.1\%.}\label{tab:main}
 \begin{tabular}{llrrr}
 \toprule
 verifier & precision & $A_{32}$ & $\Delta_{32}$ [95\% CI] & winner change \\
@@ -48,51 +90,97 @@ PRM-7B & BF16 & 76.6 & -- & -- \\
 \centering
 \includegraphics[width=\linewidth]{figures/curves.pdf}
 \caption{Best-of-$N$ accuracy as a function of the number of candidates $N$, per
-verifier and precision (2,000 problems; 200 random subsets per problem for $N<32$).
-The dotted line is unweighted majority vote over the same $N$ candidates.}\label{fig:curves}
+verifier and precision (main study, 2,000 problems; 200 random subsets per problem for
+$N<32$). The dotted line is the verifier-free majority vote over the same $N$
+candidates.}\label{fig:curves}
 \end{figure}
 
-Three bits is where selection starts to degrade: GPTQ-W3 costs 1.3--1.8\pp\ for the
-4B, 8B and PRM verifiers and 13.2\pp\ for the 1.7B ORM, whose selection collapses
-towards the random-candidate rate. The method matters little at 4 bits for the 4B and
-8B ORMs (AWQ-W4: $0.00$ and $+0.55$\pp; round-to-nearest RTN-W4: $+0.25$ and
-$+0.90$\pp; RTN-W8 on the 8B: $+0.25$\pp, winner change 6\%), but the 1.7B ORM is
-sensitive to it: RTN-W4 costs it $2.8$\pp\ $[-4.0, -1.7]$ against $1.1$\pp\ for
-GPTQ-W4. Smaller verifiers are less robust to coarser quantization.
+\subsection{Under the 6~GB verifier budget, the tested 4B 4-bit verifier is best}\label{sec:frontier}
 
-\subsection{Under a memory budget, quantize the larger verifier}\label{sec:frontier}
+Fig.~\ref{fig:frontier} shows accuracy against measured verifier memory for the tested
+Skywork ORM deployments. At the registered 6~GB ceiling, the configuration selected on
+development data is the 4B ORM with packed GPTQ-W4 (4.9~GiB peak), and the best BF16
+verifier that fits is the 1.7B ORM (4.0~GiB). (The plan states the ceiling as 6~GB and
+it was applied to the GiB measurements; the selected configuration, 4.9~GiB = 5.3~GB,
+fits either reading.) The registered contrast c2 is $+2.25$\pp\ $[+1.05, +3.45]$,
+$p \le 10^{-4}$, Holm $p \le 0.0005$: \textbf{supported}. The 1.7B BF16 verifier is
+0.3\pp\ below majority vote, which needs no verifier memory at all, whereas the 4B
+GPTQ-W4 verifier is 2.0\pp\ above it. The comparison covers the tested checkpoints, a
+fixed scoring workload and verifier memory only; within this family, accuracy does not
+grow with size (the 4B BF16 model beats the 8B), so the result is about these
+deployments rather than a general rule that larger is better.
+
+Part of the advantage is answer format rather than answer content. With the lenient
+grader, c2 is $+1.55$\pp\ $[+0.45, +2.65]$. As a secondary analysis, one of the authors
+graded, blind to arm, verifier and grader verdict, every distinct Best-of-32 winner
+without an extractable final answer in either arm (94 responses) and 30 random winners
+with one (\ref{app:audit}); identical responses selected in both arms received a single
+label. Replacing the strict grader by these labels on all audited winners gives
+$+1.40$\pp\ $[+0.30, +2.50]$, nominal $p=0.011$ (4B GPTQ-W4 75.5\% versus 1.7B BF16
+74.1\%); this interval treats the human labels as error-free and the analysis is not
+part of the registered family. The registered strict-grader effect is therefore an
+upper estimate, and we regard $+1.4$\pp\ as the more realistic size. It does not depend
+on label noise or truncation: with GSM8K labels replaced by GSM8K-Platinum it is
+$+2.37$\pp, and with length-truncated candidates removed before selection $+2.20$\pp\
+(strict grader). \todo{memory/throughput re-measurement incl. PRM (exp. C)}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.75\linewidth]{figures/frontier.pdf}
-\caption{Accuracy--memory frontier of deployed Skywork ORM verifiers (Best-of-32,
-2,000 problems). Memory is the measured peak allocation while scoring a fixed workload
-(64 sequences of 900 tokens, RTX 4090); GPTQ-W4 uses packed 4-bit kernels and NF4 uses
-\texttt{bitsandbytes}. Vertical lines are the registered memory ceilings, applied to
-the GiB measurements; the dashed one is the primary 6 GiB ceiling of c2. The step line
-is the best accuracy reachable within each memory budget.}\label{fig:frontier}
+\caption{Accuracy against measured verifier memory for the tested Skywork ORM
+deployments (Best-of-32, main study, 2,000 problems). Memory is the peak allocation while
+scoring a fixed workload (64 sequences of 900 tokens, RTX 4090, no generator); GPTQ-W4
+uses packed 4-bit kernels and NF4 \texttt{bitsandbytes}. Vertical lines mark the
+registered ceilings, the dashed one the primary 6~GB ceiling of c2 (applied to GiB). The
+step line is the best accuracy among the tested deployments within each budget; the
+dotted line is majority vote, which uses no verifier.}\label{fig:frontier}
 \end{figure}
 
-Fig.~\ref{fig:frontier} shows the accuracy--memory frontier of deployed verifiers.
-At the registered 6~GB ceiling, the configuration selected on development data is the
-4B ORM with packed GPTQ-W4 (4.9~GiB peak), against the best BF16 verifier that fits,
-the 1.7B ORM (4.0~GiB). The registered contrast c2 is $+2.25$\pp\ $[+1.05, +3.45]$,
-$p<10^{-4}$, Holm-adjusted $p = 0.0005$: \textbf{supported}.
+\subsection{Selected candidates change often; selected answers rarely do}\label{sec:mechanism}
 
-About a third of this advantage is answer format rather than answer content. With the
-lenient grader the effect is $+1.55$\pp\ $[+0.45, +2.65]$. To measure it directly, a
-human rater graded, blind to arm, verifier and grader verdicts, every Best-of-32
-winner without an extractable final answer in either arm (94 responses) plus 30
-random controls; a blinded second pass resolved every ``unsure'' verdict
-(\ref{app:audit}). With these human verdicts replacing the strict grader on
-all audited winners, c2 is $+1.40$\pp\ $[+0.30, +2.50]$ (4B GPTQ-W4 75.5\% versus 1.7B
-BF16 74.1\%). We therefore report $+1.4$\pp\ as the format-corrected size of the
-registered effect. It does not depend on label noise or truncation: with GSM8K
-labels replaced by GSM8K-Platinum (56 ambiguous problems removed, 8 relabelled) it is
-$+2.37$\pp, and with length-truncated candidates removed before selection $+2.20$\pp\
-(both under the strict grader).
+Table~\ref{tab:transitions} decomposes the 4-bit and 3-bit changes into answer
+transitions. With GPTQ-W4 or NF4 the selected candidate changes on 21--49\% of
+main-study problems, but the selected canonical answer changes on only 4.5--12.8\%:
+73--81\% of the candidate changes keep the same final answer. Harm (a correct BF16
+selection becomes wrong) and benefit (the reverse) are each 0.9--4.1\% of problems and
+largely offset each other. At 3 bits both the answer-change rate (12.6--37.8\%) and
+harm grow, and harm exceeds benefit. The same pattern holds in H6 and H7. These
+measurements are consistent with answer redundancy: candidates that share the selected
+answer are interchangeable for accuracy, so most score perturbations move the selection
+within the same answer cluster.
 
-\subsection{Why selection is robust: answer redundancy}\label{sec:mechanism}
+\begin{table}[!htb]
+\centering
+\small
+\caption{Answer transitions at $N=32$ relative to BF16 (\% of problems). Cand.: selected
+candidate changes; answer: selected canonical answer changes; same: share of candidate
+changes that keep the answer; harm: correct $\to$ wrong; benefit: wrong $\to$ correct;
+$\Delta_{32}$ = benefit $-$ harm (pp).}\label{tab:transitions}
+\begin{tabular}{lllrrrrrr}
+\toprule
+study & verifier & condition & cand. & answer & same & harm & benefit & $\Delta_{32}$ \\
+\midrule
+main & ORM 1.7B & GPTQ-W4 & 48.9 & 12.8 & 74 & 4.1 & 3.0 & $-1.10$ \\
+ & & GPTQ-W3 & 87.6 & 37.8 & 57 & 17.7 & 4.5 & $-13.15$ \\
+ & ORM 4B & GPTQ-W4 & 29.2 & 7.8 & 73 & 1.7 & 2.3 & $+0.55$ \\
+ & & GPTQ-W3 & 59.7 & 17.2 & 71 & 5.2 & 3.5 & $-1.75$ \\
+ & ORM 8B & BF16-null & 6.9 & 0.8 & 88 & 0.3 & 0.2 & $-0.10$ \\
+ & & NF4 & 21.2 & 4.5 & 79 & 1.3 & 1.2 & $-0.05$ \\
+ & & GPTQ-W4 & 25.1 & 5.9 & 76 & 1.5 & 1.7 & $+0.15$ \\
+ & & GPTQ-W3 & 50.5 & 13.5 & 73 & 4.3 & 2.7 & $-1.60$ \\
+ & PRM & NF4 & 25.2 & 4.8 & 81 & 0.9 & 0.9 & $-0.05$ \\
+ & & GPTQ-W4 & 33.0 & 6.2 & 81 & 1.6 & 1.3 & $-0.30$ \\
+ & & GPTQ-W3 & 54.0 & 12.6 & 77 & 3.4 & 2.1 & $-1.30$ \\
+\midrule
+H6 & ORM 8B & GPTQ-W4 & 31.4 & 6.6 & 79 & 1.3 & 1.3 & $0.00$ \\
+ & PRM & GPTQ-W4 & 34.4 & 5.4 & 84 & 0.8 & 1.3 & $+0.50$ \\
+H7 & ORM 8B & GPTQ-W4 & 26.9 & 8.4 & 69 & 2.1 & 1.8 & $-0.28$ \\
+ & PRM & GPTQ-W4 & 30.1 & 8.1 & 73 & 1.0 & 0.5 & $-0.57$ \\
+ & ORM 8B & GPTQ-W3 & 51.7 & 20.0 & 61 & 5.8 & 2.3 & $-3.49$ \\
+ & PRM & GPTQ-W3 & 55.9 & 18.2 & 67 & 3.8 & 1.2 & $-2.55$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[t]
 \centering
@@ -100,110 +188,125 @@ $+2.37$\pp, and with length-truncated candidates removed before selection $+2.20
 \caption{Winner change versus accuracy change at $N=32$ for every quantized condition
 and control in the main study (circles) and the two follow-up studies (H6 squares, H7
 triangles), with 95\% bootstrap intervals. Four-bit conditions change the selected
-candidate on 20--35\% of problems while staying within the $\pm3$\pp\ equivalence
-band; 3-bit conditions change about half of the winners and start to lose accuracy.}\label{fig:mechanism}
+candidate on 21--52\% of problems with point estimates inside the $\pm3$\pp\ band; 3-bit
+conditions change about half or more of the winners and lose accuracy.}\label{fig:mechanism}
 \end{figure}
 
-Quantization perturbs verifier scores enough to change the selected candidate on a
-quarter to a half of problems at 4 bits, yet accuracy barely moves. The reason is
-redundancy in the pool: on most problems many candidates share the selected answer,
-so a different winner usually carries the same final answer. Harm concentrates on
-\emph{contested} problems, where the BF16 winner's answer is held by 20--50\% of the
-pool. On these problems (lenient grader), GPTQ-W3 costs the 1.7B ORM 31.0\pp\
-$[-35.9, -25.9]$ ($n=410$) and the 4B and 8B ORMs 5.4 and 5.7\pp, while GPTQ-W4 costs
-at most 3.4\pp\ (1.7B) and 0.0--1.2\pp\ for the larger models
-(Fig.~\ref{fig:mechanism}). The BF16-null control shows the same direction of
-movement at a much smaller scale, consistent with score noise tipping close
-decisions. The redundancy bins were fixed after first inspection; this analysis is
-exploratory.
+\subsection{No confirmatory evidence for the MATH-loss and budget-growth contrasts}\label{sec:c4c5}
 
-\subsection{Difficulty and budget did not amplify the damage}\label{sec:c4c5}
-
-Development data suggested that quantization damage concentrates on MATH and grows
-with $N$; the registered tests on the 1,200 evaluation MATH problems do not support
-this. c4 (MATH $\Delta_{32}$, 4B and 8B GPTQ-W4 averaged) is $-0.63$\pp\
-$[-1.38, +0.08]$, Holm $p=0.40$; c5 (growth from $N=4$ to $N=32$) is $-0.51$\pp\
-$[-1.20, +0.16]$, Holm $p=0.42$. Both are reported as not supported (inconclusive,
-not evidence of absence); the intervals bound any such effect at about 1.4\pp. The
-development signal was a winner's-curse estimate on 200 problems.
+Development data had suggested that quantization damage concentrates on MATH and grows
+with $N$. On the 1,200 evaluation MATH problems, c4 (MATH $\Delta_{32}$, 4B and 8B ORMs
+at GPTQ-W4, averaged within problem) is $-0.63$\pp\ $[-1.38, +0.08]$, Holm $p=0.40$; c5
+(the change of that loss from $N=4$ to $N=32$) is $-0.51$\pp\ $[-1.20, +0.16]$, Holm
+$p=0.42$. Neither is supported. These are inconclusive results, not evidence of no
+effect; the intervals exclude MATH losses larger than about 1.4\pp. c4 is a within-MATH
+contrast, not a test of an interaction with difficulty; the development signal came
+from 200 problems and did not replicate.
 
 \subsection{A stronger generator on hard problems (H6)}\label{sec:h6}
 
-To test whether robustness survives where selection is harder, we registered a
-follow-up study before generating any data: Qwen2.5-Math-7B-Instruct
-\cite{yang2024qwen25math}, 800 MATH Level-5 test problems never used in this work,
-32 candidates with up to 2,048 tokens, the 8B ORM and the PRM in BF16 and GPTQ-W4.
-Its family of four tests asked for equivalence at $\pm3$\pp\ (H6a) and for retention
-of at least half of the verifier's advantage over majority vote (H6b,
-$R = \tfrac12\,\overline{\mathrm{gain}} + \overline{\Delta} > 0$).
+H6 asked whether the result survives a stronger generator on harder, previously unused
+problems: Qwen2.5-Math-7B-Instruct \cite{yang2024qwen25math}, 800 MATH Level-5 test
+problems, 32 candidates with up to 2,048 tokens, the 8B ORM and the PRM in BF16 and
+GPTQ-W4. Its family of four tests asked for equivalence at $\pm3$\pp\ (H6a) and for
+retention of at least half of the BF16 verifier's advantage over majority vote (H6b).
+With $G = A_{\mathrm{BF16}} - A_{\mathrm{MV}}$ the BF16 advantage and $\Delta$ the
+quantization effect, H6b tests
+\[
+R \;=\; \tfrac12 G + \Delta \;=\; (A_{\mathrm{Q}} - A_{\mathrm{MV}}) - \tfrac12 G \;>\; 0,
+\]
+i.e.\ the quantized verifier's advantage exceeds half of the BF16 advantage. $R$ is
+computed per problem, $R_i = C_{\mathrm{Q},i} - \tfrac12(C_{\mathrm{BF16},i} +
+C_{\mathrm{MV},i})$, and bootstrapped as a mean. $R>0$ implies retained value only when
+$G>0$; the plans therefore interpret H6b/H7b only for verifiers whose BF16 advantage is
+positive, which we check descriptively with 97.5\% intervals.
 
-Equivalence is supported for both verifiers: $\Delta_{32} = 0.00$\pp\ $[-1.13,
-+1.13]$ for the ORM and $+0.50$\pp\ $[-0.50, +1.50]$ for the PRM (Holm
-$p<10^{-4}$), although quantization changes the selected candidate on 31\% and 35\% of
-problems. H6b could not succeed: with this generator, majority vote (76.5\%) matched
-the PRM (76.6\%) and beat the ORM (72.8\%), so there was no advantage to retain
-(ORM $R=-1.88$\pp, PRM $+0.56$\pp; not supported). The same holds with the lenient
-grader and without truncated candidates (19\% of candidates reached the limit).
-Quantization-induced changes moved selections towards the consensus answer: on
-problems where the BF16 PRM had picked an answer different from majority vote
-($n=131$), its quantized version was right 6.9\pp\ more often $[+3.1, +11.5]$
-(exploratory).
+Equivalence is supported for both verifiers: $\Delta_{32} = 0.00$\pp\ $[-1.13, +1.13]$
+for the ORM and $+0.50$\pp\ $[-0.50, +1.50]$ for the PRM, although the selected
+candidate changes on 31\% and 34\% of problems. With this generator, however, neither
+verifier showed a clear positive advantage over majority vote (76.5\%): the PRM tied it
+($G = +0.13$\pp\ $[-1.88, +2.13]$) and the ORM fell below it ($G = -3.75$\pp\ $[-6.25,
+-1.25]$). H6 therefore did not establish a positive BF16 advantage to retain, which
+limits the practical interpretation of its retention tests (ORM $R = -1.88$\pp, PRM
+$+0.56$\pp; neither supported). These conclusions hold under the lenient grader and
+without truncated candidates (19\% of candidates reached the length limit).
 
 \subsection{Value retention where the verifier adds value (H7)}\label{sec:h7}
+
+H7 is a prospective, targeted follow-up in a regime selected with earlier exploratory
+data: the main generator on hard problems, where the main-study PRM and 8B ORM had beaten
+majority vote. It uses all 1,060 MATH Level-4 and Level-5 test problems not used
+anywhere else in this work, the registered generation settings, and the same verifiers,
+conditions, tests and analysis code as H6. Because the regime was chosen with knowledge
+of earlier results, H7 estimates the effect of quantization in that regime, not the
+typical value of a verifier across deployments.
+
+Both verifiers beat majority vote in BF16 on the new problems: the PRM by $+8.2$\pp\
+(97.5\% interval $[+5.9, +10.7]$) and the 8B ORM by $+3.0$\pp\ $[+0.4, +5.8]$. All four
+registered hypotheses are supported (Holm over four). Accuracy is equivalent at
+$\pm3$\pp: $\Delta_{32} = -0.28$\pp\ $[-1.42, +0.85]$ for the ORM and $-0.57$\pp\
+$[-1.32, +0.19]$ for the PRM. The quantized verifiers keep more than half of their BF16
+advantage: decisively for the PRM ($R = +3.54$\pp\ $[+2.45, +4.72]$, Holm $p \le
+0.0003$), narrowly for the ORM ($R = +1.23$\pp\ $[-0.14, +2.59]$, one-sided Holm
+$p = 0.041$), in line with its lower planned power. As descriptive quantities, the PRM
+retains 93\% of its advantage (95\% interval 84--102\%) and the ORM 91\% (44--149\%;
+the ratio is unstable because the ORM's advantage is small). The retention conclusions
+keep their sign under the lenient grader and without truncated candidates, the
+registered condition for describing value as preserved. Three bits is not safe in this
+regime (exploratory): GPTQ-W3 costs $3.5$\pp\ (ORM) and $2.6$\pp\ (PRM) and removes the
+ORM's advantage. Level-wise estimates and all sensitivity analyses are in the
+repository. Fig.~\ref{fig:retention} summarises the advantage over majority vote before
+and after quantization across regimes.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/retention.pdf}
 \caption{Verifier advantage over majority vote (Best-of-32 accuracy minus majority
-vote@32) in BF16 (open circles) and with GPTQ-W4 (diamonds), for the 8B ORM and the PRM,
-across regimes. Main-study rows are exploratory subsets; H6 and H7 are separately
-preregistered studies on never-used problems.}\label{fig:retention}
+vote@32, pp, with 95\% bootstrap intervals) in BF16 (open circles) and with GPTQ-W4
+(diamonds), for the 8B ORM and the PRM. Main-study rows are exploratory subsets; H6 and
+H7 are separately planned studies on new problems.}\label{fig:retention}
 \end{figure}
 
-H6 left the value-retention question open because no verifier added value there. We
-therefore registered a second follow-up study (H7) in the regime where earlier,
-exploratory data showed a clear advantage over majority vote: the registered weak
-generator on hard problems. It uses all 1,060 MATH Level-4 and Level-5 test problems
-not used anywhere else in this work, the registered generation settings, and the same
-verifiers, conditions, tests and analysis code as H6. The regime was chosen with
-knowledge of the earlier data (selected planning gains of $+6.6$ and $+3.5$\pp), so the
-gains on the new problems could have been smaller; the problems themselves were never
-seen before.
+\subsection{Robustness and controls}\label{sec:robustness}
 
-This time both verifiers beat majority vote in BF16: the PRM by $+8.2$\pp\ (97.5\%
-interval $[+5.9, +10.7]$) and the 8B ORM by $+3.0$\pp\ $[+0.4, +5.8]$. All four
-registered hypotheses are supported (Holm over four). Accuracy is equivalent at
-$\pm3$\pp: $\Delta_{32} = -0.28$\pp\ $[-1.42, +0.85]$ for the ORM and $-0.57$\pp\
-$[-1.32, +0.19]$ for the PRM. Quantization keeps at least half of the advantage: for
-the PRM decisively ($R = +3.54$\pp\ $[+2.45, +4.72]$, Holm $p<10^{-4}$; 93\% of the
-advantage retained, 95\% interval 84--102\%), for the ORM narrowly ($R = +1.23$\pp,
-one-sided Holm $p = 0.041$; 91\% retained, with a wide interval), as anticipated by its
-lower registered power. Both conclusions keep their sign under the lenient grader and
-with truncated candidates removed, the registered condition for stating that value is
-preserved. Three bits is not safe in this regime: GPTQ-W3 costs $3.5$\pp\ (ORM) and
-$2.6$\pp\ (PRM) and erases the ORM's advantage (exploratory). Fig.~\ref{fig:retention}
-summarises the advantage over majority vote before and after quantization across all
-regimes.
+\paragraph{Other reward-model families} \todo{A1/A2: Skywork-V2-Llama-3.1-8B and
+Tulu-3-8B-RM, main and H7.}
 
-\subsection{Robustness checks}\label{sec:robustness}
+\paragraph{Task-matched calibration at 3 bits} \todo{B: GPTQ-W3 with in-domain
+calibration vs generic.}
 
-\paragraph{Answer format.} Several quantized conditions appeared to \emph{improve}
-GSM8K accuracy (e.g.\ 4B GPTQ-W4 $+3.0$\pp; $+8.0$\pp\ on the Llama pools). A
-decomposition into format and content shows these are format effects: in BF16 the
-Skywork ORMs slightly prefer prose answers without a boxed final answer, which the
-strict grader scores as wrong, and quantization weakens that preference (4B GPTQ-W4:
-format term $+3.0$, content term $0.0$; lenient $+0.4$\pp). MATH effects are content
-effects under both graders. We do not report any quantization ``gain''.
+\paragraph{Selection rules} The 4-bit result does not depend on the selection rule
+(exploratory, main study, $N=32$): with a reward-weighted answer vote (temperature
+fitted on development data), GPTQ-W4 changes accuracy by $-1.00$, $-0.60$, $+0.30$ and
+$+0.25$\pp\ for the 1.7B, 4B and 8B ORMs and the PRM; restricting Best-of-32 to
+candidates with an extractable answer gives $-1.10$, $-0.55$, $0.00$ and $-0.45$\pp; and
+the PRM's last-step aggregation gives $-0.25$\pp. GPTQ-W3 again loses 0.7--11\pp\ under
+every rule. Restricting selection to extractable answers raises the BF16 ORMs' accuracy
+by 2.2--3.2\pp\ (e.g.\ 8B: 72.9\% to 76.1\%), a measure of how much the strict grader
+penalises their preference for prose answers.
 
-\paragraph{Second generator.} On 300 problems with Llama-3.2-3B-Instruct candidates
-(exploratory), GPTQ-W4 changes the PRM's Best-of-32 accuracy by $+0.33$\pp\
-$[-3.00, +4.00]$ and NF4 by $-0.67$\pp; for the 4B ORM the strict grader shows
-$+8.0$\pp, which shrinks to $+2.0$\pp\ $[0.0, +4.3]$ under the lenient grader, again a
-format effect. With this generator, majority vote (76.3\%) beats both verifiers in BF16
-(ORM 63.7\%, PRM 70.7\%).
+\paragraph{Answer format} Several quantized conditions appeared to \emph{improve} GSM8K
+accuracy under the strict grader (e.g.\ 4B GPTQ-W4 $+3.0$\pp; $+8.0$\pp\ on the Llama
+pools). A decomposition into format and content shows these are format effects:
+quantization weakens the Skywork ORMs' preference for prose answers without a boxed
+final answer (4B GPTQ-W4: format term $+3.0$, content term $0.0$; lenient $+0.4$\pp).
+MATH effects are content effects under both graders. We report no quantization gain.
 
-\paragraph{Labels and truncation.} With GSM8K-Platinum labels c1 is $+0.44$\pp\
-(c4 and c5 involve MATH only and are unchanged); with truncated candidates removed
-before selection, c1 is $+0.33$, c4 $-0.67$ and c5 $-0.52$\pp. No conclusion changes.
-Both GSM8K problems whose labels our audit had flagged as questionable are among those
+\paragraph{Packed versus simulated quantization} Packed and simulated GPTQ-W4 select the
+same final answer on 98.8--99.2\% of problems; correctness flips are rare and symmetric
+(0.35--0.55\% of problems), and packed GPTQ-W4 changes accuracy versus BF16 by
+$-1.05$, $+0.55$ and $+0.20$\pp\ for the 1.7B, 4B and 8B ORMs (simulated: $-1.10$,
+$+0.55$, $+0.15$). c2 uses the packed scores.
+
+\paragraph{Second generator} On 300 problems with Llama-3.2-3B-Instruct candidates
+(exploratory), GPTQ-W4 changes the PRM's Best-of-32 accuracy by $+0.33$\pp\ $[-3.00,
++4.00]$ and NF4 by $-0.67$\pp; for the 4B ORM the strict grader shows $+8.0$\pp, which
+shrinks to $+2.0$\pp\ $[0.0, +4.3]$ under the lenient grader, again a format effect.
+With this generator, majority vote (76.3\%) beats both verifiers in BF16 (ORM 63.7\%,
+PRM 70.7\%).
+
+\paragraph{Labels and truncation} With GSM8K-Platinum labels c1 is $+0.44$\pp\ (c4 and
+c5 involve MATH only and are unchanged); with truncated candidates removed before
+selection, c1 is $+0.33$, c4 $-0.67$ and c5 $-0.52$\pp. No conclusion changes. Both
+GSM8K problems whose labels the human audit had flagged as questionable are among those
 GSM8K-Platinum removes.
