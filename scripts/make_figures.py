@@ -87,6 +87,11 @@ def fig_frontier(st):
             fx.append(r.mem)
             fy.append(r.acc)
     ax.step(fx + [17.5], fy + [fy[-1]], where="post", color=MUTED, lw=1.0, zorder=1)
+    mv = pd.read_csv("outputs/tables/revision/majority.csv")
+    mv32 = 100 * mv[(mv.population == "main_all_2000") & (mv.N == 32)].majority.iloc[0]
+    ax.axhline(mv32, color=INK2, lw=0.9, ls=":", zorder=1)
+    ax.text(17.3, mv32 + 0.08, f"majority vote@32, no verifier ({mv32:.1f}%)", ha="right", va="bottom",
+            fontsize=6.5, color=INK2)
     for s in ("bf16", "nf4", "gptq-w4"):
         name, col, mk = PREC[s]
         d = df[df.scheme == s]
@@ -108,11 +113,13 @@ def fig_frontier(st):
 # ---------------------------------------------------------------- Fig. 2
 def fig_curves():
     m = pd.read_csv("outputs/tables/main.csv")
+    mv = pd.read_csv("outputs/tables/revision/majority.csv")
+    mv = mv[mv.population == "main_all_2000"].sort_values("N")
     fig, axes = plt.subplots(1, 4, figsize=(7.2, 2.4), sharey=True)
     for ax, v in zip(axes, VNAME):
         d = m[m.verifier == v]
         ref = d[d.condition == "gptq-w4"].sort_values("N")
-        ax.plot(ref.N, 100 * ref.majority, color=MUTED, ls=":", lw=1.2)
+        ax.plot(mv.N, 100 * mv.majority, color=MUTED, ls=":", lw=1.2)
         ax.plot(ref.N, 100 * ref.acc_ref, color=BLUE, marker="o", ms=3)
         for c in ("nf4", "gptq-w4", "gptq-w3"):
             name, col, mk = PREC[c]
@@ -186,36 +193,50 @@ def fig_mechanism():
 
 
 # ---------------------------------------------------------------- Fig. 4
+def _boot_ci(x, n=10_000, seed=7):
+    rng = np.random.default_rng(seed)
+    b = x[rng.integers(0, len(x), (n, len(x)))].mean(1)
+    return np.percentile(b, [2.5, 97.5])
+
+
 def fig_retention(st):
     lv = json.loads(Path("data/math_levels.json").read_text())
+    regimes = [("Main study, all problems", G, None), ("Main study, MATH Level 5", G, "L5"),
+               ("H7: weak generator, new Levels 4-5", "qwen2.5-1.5b-h7", "data/manifest_h7.json"),
+               ("H6: strong generator, new Level 5", "qwen2.5-math-7b", "data/manifest_h6_hard.json")]
     rows = []
-    for v in ("sky-8b", "prm-7b"):
-        a0, C, K, q = acc32(st, G, v, "bf16")
-        a1, *_ = acc32(st, G, v, "gptq-w4")
-        mj = majority(K, C)
-        for label, msk in (("Main study, all problems", np.ones(len(q), bool)),
-                           ("Main study, MATH Level 5", np.array([lv.get(x) == 5 for x in q]))):
-            rows.append({"regime": label, "v": v, "bf16": 100 * (a0 - mj)[msk].mean(),
-                         "w4": 100 * (a1 - mj)[msk].mean(), "confirmatory": False})
-    for tag, label in (("h7", "H7: weak generator, new Levels 4-5"), ("h6", "H6: strong generator, new Level 5")):
-        conf = json.loads(Path(f"outputs/tables/{tag}/{tag}_confirmatory.json").read_text())["per_verifier"]
-        for v, r in conf.items():
-            rows.append({"regime": label, "v": v, "bf16": 100 * (r["acc_bf16"] - r["majority"]),
-                         "w4": 100 * (r["acc_gptq_w4"] - r["majority"]), "confirmatory": True})
+    for label, gen, sel in regimes:
+        for v in ("prm-7b", "sky-8b"):
+            a0, C, K, q = acc32(st, gen, v, "bf16")
+            a1, *_ = acc32(st, gen, v, "gptq-w4")
+            mj = majority(K, C)
+            if sel is None:
+                msk = np.ones(len(q), bool)
+            elif sel == "L5":
+                msk = np.array([lv.get(x) == 5 for x in q])
+            else:
+                keep = set(json.loads(Path(sel).read_text())["ids"])
+                msk = np.array([x in keep for x in q])
+            g0, g1 = 100 * (a0 - mj)[msk], 100 * (a1 - mj)[msk]
+            (l0, h0), (l1, h1) = _boot_ci(g0), _boot_ci(g1)
+            rows.append({"regime": label, "v": v, "n": int(msk.sum()), "bf16": g0.mean(), "bf16_lo": l0,
+                         "bf16_hi": h0, "w4": g1.mean(), "w4_lo": l1, "w4_hi": h1,
+                         "confirmatory": label.startswith("H")})
     df = pd.DataFrame(rows)
-    order = [(r, v) for r in df.regime.unique() for v in ("prm-7b", "sky-8b")]
-    fig, ax = plt.subplots(figsize=(4.6, 3.0))
+    order = [(r[0], v) for r in regimes for v in ("prm-7b", "sky-8b")]
+    fig, ax = plt.subplots(figsize=(5.6, 3.3))
     ax.axvline(0, color=INK2, lw=0.8)
     for y, (reg, v) in enumerate(order):
         r = df[(df.regime == reg) & (df.v == v)].iloc[0]
-        ax.plot([r.bf16, r.w4], [y, y], color=MUTED, lw=1.0, zorder=1)
-        ax.scatter(r.bf16, y, facecolor="none", edgecolor=BLUE, marker="o", s=70, linewidth=1.6, zorder=2)
-        ax.scatter(r.w4, y, color=ORANGE, marker="D", s=26, edgecolor="white", linewidth=1.0, zorder=3)
+        ax.errorbar(r.bf16, y - 0.14, xerr=[[r.bf16 - r.bf16_lo], [r.bf16_hi - r.bf16]], fmt="o", mfc="none",
+                    mec=BLUE, ecolor=BLUE, mew=1.4, ms=6, elinewidth=1.0, zorder=2)
+        ax.errorbar(r.w4, y + 0.14, xerr=[[r.w4 - r.w4_lo], [r.w4_hi - r.w4]], fmt="D", color=ORANGE,
+                    mec="white", ms=5, elinewidth=1.0, zorder=3)
     ax.set_yticks(range(len(order)))
     ax.set_yticklabels([f"{reg} | {'PRM' if v == 'prm-7b' else 'ORM 8B'}" for reg, v in order], fontsize=6.5)
     ax.invert_yaxis()
-    ax.set_xlabel("Best-of-32 accuracy minus majority vote@32 (pp)")
-    ax.legend(handles=[plt.Line2D([], [], color=BLUE, marker="o", mfc="none", mew=1.6, ls="", label="BF16"),
+    ax.set_xlabel("Best-of-32 accuracy minus majority vote@32 (pp), 95% bootstrap CI")
+    ax.legend(handles=[plt.Line2D([], [], color=BLUE, marker="o", mfc="none", mew=1.4, ls="", label="BF16"),
                        plt.Line2D([], [], color=ORANGE, marker="D", ls="", label="GPTQ-W4")],
               loc="lower right", fontsize=7)
     save(fig, "retention")
