@@ -33,6 +33,13 @@ h6:
   easy: {level: [1, 2], n: 200, seed: 20261013}    # exploratory stratum E
   max_tokens: 2048                                 # other generation settings as above
   max_model_len: 4096
+  phase: phase7_h6
+
+# H7 (docs/preregistration_h7.md): value retention where the verifier adds value
+h7:
+  generator: qwen2.5-1.5b-h7                       # = Qwen2.5-1.5B-Instruct, registered settings
+  hard: {level: [4, 5], n: all}                    # every eligible unused Level 4-5 problem
+  phase: phase8_h7
 
 selection:
   budgets: [1, 2, 4, 8, 16, 32]
@@ -105,6 +112,16 @@ phases:
       - {verifier: sky-8b, condition: rtn-w4}
       - {verifier: sky-8b, condition: rtn-w8}
   phase7_h6:                       # H6: confirmatory runs first, then controls
+    runs:
+      - {verifier: sky-8b, condition: bf16}
+      - {verifier: sky-8b, condition: gptq-w4}
+      - {verifier: prm-7b, condition: bf16}
+      - {verifier: prm-7b, condition: gptq-w4}
+      - {verifier: sky-8b, condition: bf16-null}
+      - {verifier: prm-7b, condition: bf16-null}
+      - {verifier: sky-8b, condition: gptq-w3}
+      - {verifier: prm-7b, condition: gptq-w3}
+  phase8_h7:                       # H7: confirmatory runs first, then controls
     runs:
       - {verifier: sky-8b, condition: bf16}
       - {verifier: sky-8b, condition: gptq-w4}

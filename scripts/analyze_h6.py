@@ -60,6 +60,7 @@ def main():
     ap.add_argument("--hard", default="data/manifest_h6_hard.json")
     ap.add_argument("--easy", default="data/manifest_h6_easy.json")
     ap.add_argument("--out", default="outputs/tables/h6")
+    ap.add_argument("--prefix", default="H6", help="hypothesis label prefix (H7 reuses this frozen analysis)")
     ap.add_argument("--dry-run", action="store_true", help="test on an existing pool; results are not H6")
     a = ap.parse_args()
     out = Path(a.out)
@@ -93,8 +94,8 @@ def main():
         d, g = (A1 - A0)[mH], (A0 - Mj)[mH]
         r = ((A1 - Mj) - R_FRAC * (A0 - Mj))[mH]
         bd, br, bg = boot(d), boot(r), boot(g)
-        pvals[f"H6a-{v}"] = float(max(np.mean(bd <= -MARGIN), np.mean(bd >= MARGIN)))
-        pvals[f"H6b-{v}"] = float(np.mean(br <= 0))
+        pvals[f"{a.prefix}a-{v}"] = float(max(np.mean(bd <= -MARGIN), np.mean(bd >= MARGIN)))
+        pvals[f"{a.prefix}b-{v}"] = float(np.mean(br <= 0))
         res[v] = {
             "n": int(mH.sum()), "acc_bf16": A0[mH].mean(), "acc_gptq_w4": A1[mH].mean(), "majority": Mj[mH].mean(),
             "oracle_pass32": C[mH].any(1).mean(), "random_candidate": C[mH].mean(),
@@ -162,22 +163,23 @@ def main():
             expl.append({"verifier": v, "analysis": f"subject_stratified:{k_}", "n": int(mH.sum()),
                          "estimate": x.mean(), "ci95": ci(np.array(bs))})
 
-    keys = [f"H6a-{v}" for v in VERIFIERS] + [f"H6b-{v}" for v in VERIFIERS]
+    keys = [f"{a.prefix}a-{v}" for v in VERIFIERS] + [f"{a.prefix}b-{v}" for v in VERIFIERS]
     adj = holm(np.array([pvals[k] for k in keys]))
     conf = {}
     for k, pa in zip(keys, adj):
         v = k.split("-", 1)[1]
-        est = res[v]["delta"] if k.startswith("H6a") else res[v]["R"]
+        is_a = k.startswith(f"{a.prefix}a-")
+        est = res[v]["delta"] if is_a else res[v]["R"]
         conf[k] = {"estimate": est, "p": pvals[k], "p_holm": float(pa), "supported": bool(pa < 0.05)}
-        if k.startswith("H6a") and pa >= 0.05:
+        if is_a and pa >= 0.05:
             lo, hi = res[v]["delta_ci95"]
             conf[k]["reading"] = "detected change" if (lo > 0 or hi < 0) else "inconclusive"
     subjects = pd.Series(["-".join(q.split("-")[1:-1]) for q in qids])[mH].value_counts().to_dict()
     report = {"dry_run": a.dry_run, "generator": a.generator, "confirmatory": conf, "per_verifier": res,
               "stratum_H_subjects": subjects}
     tag = "dryrun_" if a.dry_run else ""
-    (out / f"{tag}h6_confirmatory.json").write_text(json.dumps(report, indent=1, default=float))
-    pd.DataFrame(expl).to_csv(out / f"{tag}h6_exploratory.csv", index=False)
+    (out / f"{tag}{a.prefix.lower()}_confirmatory.json").write_text(json.dumps(report, indent=1, default=float))
+    pd.DataFrame(expl).to_csv(out / f"{tag}{a.prefix.lower()}_exploratory.csv", index=False)
     print(json.dumps(conf, indent=1, default=float))
     print(json.dumps(res, indent=1, default=float))
 

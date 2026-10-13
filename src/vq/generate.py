@@ -18,6 +18,9 @@ GENERATORS = {
     "llama3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
     # H6 (docs/preregistration_h6.md): stronger generator, hard unused MATH problems
     "qwen2.5-math-7b": "Qwen/Qwen2.5-Math-7B-Instruct",
+    # H7 (docs/preregistration_h7.md): the registered generator under its own store
+    # namespace, so its pools and scores never mix with the registered study's
+    "qwen2.5-1.5b-h7": "Qwen/Qwen2.5-1.5B-Instruct",
 }
 
 

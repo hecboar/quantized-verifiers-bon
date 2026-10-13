@@ -69,9 +69,9 @@ def phase_runs(cfg: dict, phase: str, generator: str | None) -> list[ScoreRun]:
                     runs.append(ScoreRun(generator, verifier, f"gptq-w{p['bits']}-{recipe}-s{s}",
                                          "gptq", p["bits"], 128, recipe, s, lam))
         return runs
-    if phase == "phase7_h6":
-        # H6 generator; generic calibration only (no dev pools of its own)
-        gen = cfg["h6"]["generator"]
+    if phase in ("phase7_h6", "phase8_h7"):
+        # H6/H7 generator; generic calibration only (no dev pools of its own)
+        gen = cfg[{"phase7_h6": "h6", "phase8_h7": "h7"}[phase]]["generator"]
         return [_from_condition(cfg, gen, r["verifier"], r["condition"]) for r in p["runs"]]
     if phase in ("dev_numeric_controls", "phase3b_bits"):
         return [_from_condition(cfg, generator, r["verifier"], r["condition"]) for r in p["runs"]]

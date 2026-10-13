@@ -133,10 +133,36 @@ def prepare_h6(cfg: dict, outdir: Path, loaders: dict, levels: dict) -> None:
                    "parts": ["h6_hard", "h6_easy"]}, outdir / "manifest_h6_full.json")
 
 
+def prepare_h7(cfg: dict, outdir: Path, loaders: dict, levels: dict) -> None:
+    """H7 items (docs/preregistration_h7.md), frozen once: every MATH test problem of
+    the registered levels never used in this project (text-level exclusion against all
+    items in items.jsonl, which now include H6, and all of MATH500), gold self-check."""
+    from .data import _hash_ids, load_items, norm_text, save_items, save_manifest
+    from .grading import grade
+
+    outdir, h = Path(outdir), cfg["h7"]
+    if (outdir / "manifest_h7.json").exists():
+        raise FileExistsError("H7 manifest already frozen")
+    items = load_items(outdir / "items.jsonl")
+    used = {norm_text(it.question) for it in items} | {norm_text(it.question) for it in loaders["math500"]()}
+    pool = [it for it in loaders["math_test"]() if norm_text(it.question) not in used]
+    bad = {it.id for it in pool if not grade("\\boxed{" + it.gold + "}", it.gold, "math")}
+    keep = [it for it in pool if it.id not in bad and levels.get(it.id) in set(h["hard"]["level"])]
+    ids = sorted(it.id for it in keep)
+    print(f"H7: {len(ids)} problems at levels {h['hard']['level']} (gold self-check failed: {sorted(bad)})")
+    by_id = {it.id: it for it in keep}
+    known = {it.id for it in items}
+    save_items(items + [by_id[i] for i in ids if i not in known], outdir / "items.jsonl")
+    save_manifest({"name": "h7", "seed": None, "n": len(ids), "ids": ids, "sha256": _hash_ids(ids),
+                   "levels": h["hard"]["level"]}, outdir / "manifest_h7.json")
+
+
 def eval_manifest_for(cfg: dict, split: str) -> str:
     """The evaluation pools are generated from the preregistered full manifest."""
     if split == "h6":
         return "h6_full"
+    if split == "h7":
+        return "h7"
     return cfg["data"].get("eval_manifest", "eval") if split == "eval" else split
 
 
@@ -253,9 +279,9 @@ def cmd_generate(args) -> None:
     manifest = eval_manifest_for(cfg, args.split)
     ids = _manifest(manifest)[: args.limit] if args.limit else _manifest(manifest)
     # the secondary generator's gen2 subset (and the H6 items) play the role of its evaluation pools
-    split_name = "eval" if args.split in ("gen2", "h6") else args.split
-    if args.split == "h6" and args.generator != cfg["h6"]["generator"]:
-        sys.exit(f"--split h6 is registered for {cfg['h6']['generator']} only")
+    split_name = "eval" if args.split in ("gen2", "h6", "h7") else args.split
+    if args.split in ("h6", "h7") and args.generator != cfg[args.split]["generator"]:
+        sys.exit(f"--split {args.split} is registered for {cfg[args.split]['generator']} only")
     if args.split == "h6":  # H6 settings (docs/preregistration_h6.md §3); the rest as registered
         g = {**g, "max_tokens": cfg["h6"]["max_tokens"]}
     name = args.name or (f"{args.generator}__{split_name}" + (f"-pilot{args.limit}" if args.limit else ""))
@@ -316,11 +342,12 @@ def _expected_eval_ids() -> dict[str, set]:
     full = set(_manifest(cfg["data"].get("eval_manifest", "eval")))
     sec = cfg["generation"]["secondary"]
     out = {g: (set(_manifest("gen2")) if g == sec else full) for g in GENERATORS}
-    h6 = cfg.get("h6", {}).get("generator")
-    if h6:
-        out.pop(h6, None)
-        if (DATA / "manifest_h6_full.json").exists():
-            out[h6] = set(_manifest("h6_full"))
+    for study, manifest in (("h6", "h6_full"), ("h7", "h7")):
+        g = cfg.get(study, {}).get("generator")
+        if g:
+            out.pop(g, None)
+            if (DATA / f"manifest_{manifest}.json").exists():
+                out[g] = set(_manifest(manifest))
     return out
 
 
@@ -574,26 +601,28 @@ def cmd_h6(args) -> None:
     from .experiment import load_config
 
     cfg = load_config(args.config)
-    gen = cfg["h6"]["generator"]
+    study = args.study
+    gen = cfg[study]["generator"]
 
     def run(*a):
         argv = [sys.executable, "-m", "vq.cli", *a, "--config", args.config]
         rc = subprocess.run(argv, check=False).returncode
-        print(f"[h6] {' '.join(a)}: {'ok' if rc == 0 else f'FAILED ({rc})'}", flush=True)
+        print(f"[{study}] {' '.join(a)}: {'ok' if rc == 0 else f'FAILED ({rc})'}", flush=True)
         return rc == 0
 
     if not args.skip_generate:
-        if not run("generate", "--generator", gen, "--split", "h6"):
-            sys.exit("h6: generation failed")
+        if not run("generate", "--generator", gen, "--split", study):
+            sys.exit(f"{study}: generation failed")
         if not run("annotate", "--generator", gen):
-            sys.exit("h6: annotation failed")
+            sys.exit(f"{study}: annotation failed")
     if args.generate_only:
         return
-    runs = cfg["phases"]["phase7_h6"]["runs"]
+    phase = cfg[study]["phase"]
+    runs = cfg["phases"][phase]["runs"]
     failed = [f"{r['verifier']}:{r['condition']}" for r in runs
-              if not run("score", "--phase", "phase7_h6", "--only", r["verifier"], "--conditions", r["condition"])]
+              if not run("score", "--phase", phase, "--only", r["verifier"], "--conditions", r["condition"])]
     if failed:
-        sys.exit(f"h6 failed runs: {failed}")
+        sys.exit(f"{study} failed runs: {failed}")
 
 
 def cmd_parity(args) -> None:
@@ -670,14 +699,20 @@ def main(argv=None) -> None:
         DATA, {"math_test": __import__("vq.data", fromlist=["x"]).load_math_test,
                "math500": __import__("vq.data", fromlist=["x"]).load_math500},
         __import__("vq.data", fromlist=["x"]).math_test_levels()))
+    add("prepare-h7", lambda a: prepare_h7(
+        __import__("vq.experiment", fromlist=["x"]).load_config(a.config),
+        DATA, {"math_test": __import__("vq.data", fromlist=["x"]).load_math_test,
+               "math500": __import__("vq.data", fromlist=["x"]).load_math500},
+        __import__("vq.data", fromlist=["x"]).math_test_levels()))
     sp = add("h6", cmd_h6)
+    sp.add_argument("--study", default="h6", choices=["h6", "h7"])
     sp.add_argument("--skip-generate", action="store_true", help="pools already generated and annotated")
     sp.add_argument("--generate-only", action="store_true")
     sp = add("plan", cmd_plan)
     sp.add_argument("--generator", default="qwen2.5-1.5b")
     sp = add("generate", cmd_generate)
     sp.add_argument("--generator", required=True)
-    sp.add_argument("--split", choices=["eval", "dev", "gen2", "gate", "h6"], required=True)
+    sp.add_argument("--split", choices=["eval", "dev", "gen2", "gate", "h6", "h7"], required=True)
     sp.add_argument("--limit", type=int, default=None)
     sp.add_argument("--name", default=None, help="store name override (the pilot uses a unique one)")
     sp.add_argument("--fresh", action="store_true", help="fail instead of reusing existing candidates")
