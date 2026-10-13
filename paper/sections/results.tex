@@ -12,6 +12,7 @@ grader; MV is the verifier-independent majority vote. Estimates in percentage po
 with 95\% intervals (c1: 90\%, its registered decision rule). $p$: raw bootstrap
 $p$-value (TOST for equivalence tests, one-sided for H6b/H7b); $p_{\mathrm{H}}$: Holm
 within the family. $p\le10^{-4}$: no resample beyond the boundary.}\label{tab:confirmatory}
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{lllrrrrlll}
 \toprule
 test & population & contrast & BF16 & Q & MV & estimate [CI] & $p$ & $p_{\mathrm{H}}$ & result \\
@@ -32,7 +33,7 @@ H7a & H7, 1,060 & PRM, W4, $\pm3$ & 64.2 & 63.6 & 55.9 & $-0.57$ [$-1.32$, $+0.1
 H7b & H7, 1,060 & 8B ORM, $R>0$ & & & & $+1.23$ [$-0.14$, $+2.59$] & 0.041 & 0.041 & supported \\
 H7b & H7, 1,060 & PRM, $R>0$ & & & & $+3.54$ [$+2.45$, $+4.72$] & $\le10^{-4}$ & $\le$0.0003 & supported \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \subsection{Four-bit quantization preserves Best-of-32 accuracy}\label{sec:equivalence}
@@ -156,6 +157,7 @@ within the same answer cluster.
 candidate changes; answer: selected canonical answer changes; same: share of candidate
 changes that keep the answer; harm: correct $\to$ wrong; benefit: wrong $\to$ correct;
 $\Delta_{32}$ = benefit $-$ harm (pp).}\label{tab:transitions}
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{lllrrrrrr}
 \toprule
 study & verifier & condition & cand. & answer & same & harm & benefit & $\Delta_{32}$ \\
@@ -179,7 +181,7 @@ H7 & ORM 8B & GPTQ-W4 & 26.9 & 8.4 & 69 & 2.1 & 1.8 & $-0.28$ \\
  & ORM 8B & GPTQ-W3 & 51.7 & 20.0 & 61 & 5.8 & 2.3 & $-3.49$ \\
  & PRM & GPTQ-W3 & 55.9 & 18.2 & 67 & 3.8 & 1.2 & $-2.55$ \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \begin{figure}[t]
