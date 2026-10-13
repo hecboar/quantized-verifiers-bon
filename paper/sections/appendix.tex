@@ -32,17 +32,11 @@ follow-up runs on L40S and other GPUs of at least 24~GB, with BF16 and quantized
 a verifier always on the same GPU). The total cost of all experiments was about
 55~EUR.
 
-\section{Blinded audits of the outcome measure}\label{app:audit}
+\section{Blinded audit of the outcome measure}\label{app:audit}
 
-\paragraph{Format audit.} Fifty untruncated candidates without an extractable answer,
-stratified by domain and lenient-grader verdict, were graded blind to generator,
-verifier, condition and grader verdict by an AI model. The lenient grader accepted no
-wrong answer (30/30 confirmed) and missed 5 of 20 correct ones; it is a conservative
-lower bound on prose correctness.
-
-\paragraph{Exhaustive c2 audit.} All 94 unique Best-of-32 winners without an extractable
-final answer in either arm of the registered memory-frontier contrast, plus 30 random
-winners with one, were shown to a human rater (the author) with the problem, the
+All 94 unique Best-of-32 winners without an extractable final answer in either arm of
+the registered memory-frontier contrast (c2), plus 30 random winners with one, were
+shown to a human rater (one of the authors) with the problem, the
 reference answer and the full response, rendered with mathematical typesetting, and
 nothing else; responses that reached the length limit were marked as such and graded as
 incorrect by a rule fixed beforehand. The rater judged 83 correct, 29 incorrect and 12
