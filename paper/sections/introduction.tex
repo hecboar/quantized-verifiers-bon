@@ -33,8 +33,9 @@ Our contributions are:
 \begin{enumerate}
 \item \textbf{Equivalence at 4 bits.} Quantizing an 8B ORM with GPTQ-W4 leaves
 Best-of-32 accuracy unchanged within $\pm1.3$\pp\ (registered equivalence test at
-$\pm3$\pp), and the result replicates in a preregistered follow-up with a 7B math
-generator on hard problems for both an ORM and a PRM. Three bits is where degradation
+$\pm3$\pp), and the result replicates in two preregistered follow-up studies, with a 7B math
+generator and with the original generator on new hard problems, for both an ORM and a
+PRM. Three bits is where degradation
 starts, sharply so for the smallest verifier.
 \item \textbf{A memory-budget rule.} Under a 6~GB verifier budget, a 4B ORM with packed
 4-bit weights beats the best full-precision verifier that fits by 2.25\pp\ (registered;
@@ -44,10 +45,12 @@ a third of problems at 4 bits, but rarely the correctness of the selected answer
 because candidates are redundant: damage is confined to contested problems where
 competing answers have similar support, and quantization noise tends to move the
 selection towards the consensus answer.
-\item \textbf{Value retention.} \todo{H7: where the verifier beats majority vote, 4-bit
-keeps (at least half of) the advantage.} With a strong generator, however, majority
-vote matches or beats reward-model selection on hard problems, which limits how much
-value a verifier can add in the first place.
+\item \textbf{Value retention.} Where the verifier beats majority vote, 4-bit
+quantization keeps most of that advantage: in a preregistered study on 1,060 new hard
+problems the PRM retains 93\% of an 8.2\pp\ advantage (the ORM 91\% of 3.0\pp, narrowly
+significant). With a strong generator, however, majority vote matches or beats
+reward-model selection on hard problems, which limits how much value a verifier can add
+in the first place.
 \item \textbf{Evaluation lessons.} Strict answer graders can turn reward-model format
 preferences into spurious quantization ``gains''; we show how a format/content
 decomposition, a lenient grader, blinded audits and revised labels resolve this, and

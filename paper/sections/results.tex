@@ -159,7 +159,30 @@ across regimes. Main-study rows are exploratory subsets; H6 and H7 are separatel
 preregistered studies on never-used problems.}\label{fig:retention}
 \end{figure}
 
-\todo{H7 results: weak generator, 1,060 unused Level 4--5 problems.}
+H6 left the value-retention question open because no verifier added value there. We
+therefore registered a second follow-up study (H7) in the regime where earlier,
+exploratory data showed a clear advantage over majority vote: the registered weak
+generator on hard problems. It uses all 1,060 MATH Level-4 and Level-5 test problems
+not used anywhere else in this work, the registered generation settings, and the same
+verifiers, conditions, tests and analysis code as H6. The regime was chosen with
+knowledge of the earlier data (selected planning gains of $+6.6$ and $+3.5$\pp), so the
+gains on the new problems could have been smaller; the problems themselves were never
+seen before.
+
+This time both verifiers beat majority vote in BF16: the PRM by $+8.2$\pp\ (97.5\%
+interval $[+5.9, +10.7]$) and the 8B ORM by $+3.0$\pp\ $[+0.4, +5.8]$. All four
+registered hypotheses are supported (Holm over four). Accuracy is equivalent at
+$\pm3$\pp: $\Delta_{32} = -0.28$\pp\ $[-1.42, +0.85]$ for the ORM and $-0.57$\pp\
+$[-1.32, +0.19]$ for the PRM. Quantization keeps at least half of the advantage: for
+the PRM decisively ($R = +3.54$\pp\ $[+2.45, +4.72]$, Holm $p<10^{-4}$; 93\% of the
+advantage retained, 95\% interval 84--102\%), for the ORM narrowly ($R = +1.23$\pp,
+one-sided Holm $p = 0.041$; 91\% retained, with a wide interval), as anticipated by its
+lower registered power. Both conclusions keep their sign under the lenient grader and
+with truncated candidates removed, the registered condition for stating that value is
+preserved. Three bits is not safe in this regime: GPTQ-W3 costs $3.5$\pp\ (ORM) and
+$2.6$\pp\ (PRM) and erases the ORM's advantage (exploratory). Fig.~\ref{fig:retention}
+summarises the advantage over majority vote before and after quantization across all
+regimes.
 
 \subsection{Robustness checks}\label{sec:robustness}
 
