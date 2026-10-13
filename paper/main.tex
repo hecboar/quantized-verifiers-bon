@@ -1,0 +1,49 @@
+\documentclass[review,12pt]{elsarticle}
+
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{siunitx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\pp}{\,pp}
+
+\journal{Neurocomputing}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Quantized reward-model verifiers in Best-of-N mathematical answer selection:
+a preregistered study of accuracy, memory and value retention}
+
+\author{Hector Borobia}
+\ead{hecboar@doctor.upv.es}
+\affiliation{organization={Universitat Polit\`ecnica de Val\`encia},country={Spain}}
+
+\begin{abstract}
+\todo{abstract, written last}
+\end{abstract}
+
+\begin{keyword}
+post-training quantization \sep reward models \sep Best-of-N \sep test-time compute
+\sep mathematical reasoning \sep preregistration
+\end{keyword}
+
+\end{frontmatter}
+
+\input{sections/introduction}
+\input{sections/related}
+\input{sections/setup}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}
