@@ -1,0 +1,44 @@
+\section{Conclusion}\label{sec:conclusion}
+
+We asked whether the reward-model verifier in Best-of-$N$ mathematical answer selection
+can be quantized without losing what it is for. On frozen candidate pools, with analysis
+plans fixed before the data, the answer is yes at 4 bits for verifiers of 4B parameters
+and above: GPTQ-W4 keeps Best-of-32 accuracy within a $\pm3$\pp\ equivalence margin in
+the main study and in two follow-up studies with a stronger generator and with new hard
+problems, and where the verifier beats majority vote it keeps most of that advantage
+(93\% for the PRM). Under a fixed memory budget a larger quantized verifier is the better
+choice. Robustness comes from the selection task rather than from score fidelity:
+quantization changes the selected candidate often, but pools are redundant, so the
+selected answer rarely changes; 3-bit weights and the smallest verifier are where this
+breaks down. Two practical caveats travel with these results. Measure a verifier against
+majority vote on one's own generator, because with a strong generator it may add
+nothing; and evaluate selection with a grader that is robust to answer format, because a
+strict grader can turn format preferences into spurious effects of quantization.
+
+\section*{Declarations}
+
+\paragraph{Data and code availability.} Code, configuration, frozen manifests, analysis
+plans and their amendments, and the analysis scripts are available at
+\todo{GitHub URL, tag v1.0-submission}. Candidate pools and all verifier scores are
+available at \todo{Hugging Face dataset URL}.
+
+\paragraph{Declaration of generative AI and AI-assisted technologies.} During this work
+the author used Claude (Anthropic) to help write and debug the experimental code, run
+and monitor the cloud experiments, draft and revise the analysis plans and this
+manuscript, and search the literature. An AI model (Claude) also produced the blinded
+verdicts of the first 50-item answer-format audit and a blinded second pass over the
+human rater's ``unsure'' and ``incorrect'' verdicts in the exhaustive audit
+(\ref{app:audit}); all primary human verdicts are reported separately. Two
+draft analysis plans were reviewed by another AI model (Codex). The author reviewed and
+edited all content and takes full responsibility for the publication.
+
+\paragraph{CRediT authorship contribution statement.} \textbf{Hector Borobia:}
+Conceptualization, Methodology, Software, Investigation, Formal analysis, Data curation,
+Writing -- original draft, Writing -- review \& editing, Funding acquisition.
+
+\paragraph{Declaration of competing interest.} The author declares no competing
+interests.
+
+\paragraph{Funding.} \todo{funding statement, or ``This research did not receive any
+specific grant from funding agencies in the public, commercial, or not-for-profit
+sectors.''}

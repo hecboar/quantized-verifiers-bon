@@ -1,7 +1,7 @@
 \section{Related work}\label{sec:related}
 
 \paragraph{Verifiers and test-time compute.} Training a verifier to rank sampled
-solutions was introduced for grade-school mathematics by \citet{cobbe2021gsm8k}. Process
+solutions was introduced for grade-school mathematics by Cobbe et al.~\cite{cobbe2021gsm8k}. Process
 supervision, which scores every reasoning step, outperforms outcome supervision on MATH
 \cite{lightman2023verify}, and automatically labelled PRMs
 \cite{wang2023mathshepherd,setlur2024rewarding,zhang2025prm} and generative verifiers
@@ -15,7 +15,7 @@ achieve at full precision; the cost of the verifier itself enters only as a fixe
 and accuracy keep growing with the number of samples
 \cite{brown2024large,wu2024inference}. Whether a reward model beats it depends on the
 generator, the reward model and the aggregation rule
-\cite{yuan2024free,di2025bestofmajority}. Most relevant to us, \citet{kim2025not}
+\cite{yuan2024free,di2025bestofmajority}. Most relevant to us, Kim et al.~\cite{kim2025not}
 compare memory-optimal test-time strategies for reasoning models and find that an
 external 7B PRM, counted at full precision, is consistently less memory-efficient than
 majority voting. We complement this result from the verifier side: quantizing the
@@ -43,7 +43,7 @@ of individual outputs \cite{dutta2024accuracy}. Our winner-change analysis appli
 observation to selection, where a changed winner usually carries the same answer.
 
 \paragraph{Quantized evaluators.} The closest work quantizes LLM-as-judge models:
-\citet{patira2026quantizing} report that INT8 judges stay within a preregistered
+Patira~\cite{patira2026quantizing} reports that INT8 judges stay within a preregistered
 equivalence margin of their full-precision agreement with humans, while NF4 flips a
 quarter to a third of pairwise verdicts on open-ended chat. We study scalar reward
 models used for Best-of-$N$ selection on problems with verifiable answers, several

@@ -34,7 +34,7 @@ Qwen2.5-Math-PRM-7B \cite{zhang2025prm}, whose step rewards are aggregated by th
 minimum. Both families are run with their documented input formats.\footnote{Under
 recent versions of \texttt{transformers}, the PRM's remote code leaves its rotary
 position buffers uninitialised after loading; all PRM results use buffers recomputed
-as in the model's own initialisation, checked at every load (Appendix~\ref{app:prm}).}
+as in the model's own initialisation, checked at every load (\ref{app:prm}).}
 
 \subsection{Precisions and deployments}\label{sec:precisions}
 
@@ -104,5 +104,5 @@ deployment versus the best BF16 deployment under a 6~GB verifier memory ceiling;
 calibration method that was not run (kept in the family with $p=1$); c4, $\Delta_{32}$
 on MATH (4B and 8B averaged); c5, the growth of the MATH loss from $N=4$ to $N=32$.
 Two follow-up studies were registered after the main results, each with its own family
-of four tests (Section~\ref{sec:h6}, \ref{sec:h7}). All deviations are listed in
-Appendix~\ref{app:deviations}.
+of four tests (Sections~\ref{sec:h6} and~\ref{sec:h7}). All deviations are listed in
+\ref{app:deviations}.

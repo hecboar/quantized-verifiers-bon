@@ -13,8 +13,9 @@ $A_{32}$ by between $-1.1$ and $+0.6$\pp, even though the selected candidate cha
 on 21--49\% of problems. Across budgets $N\in\{1,\dots,32\}$ the 4-bit curves track
 BF16 (Fig.~\ref{fig:curves}).
 
-\begin{table}[t]
+\begin{table}[!htb]
 \centering
+\small
 \caption{Best-of-32 accuracy (\%) and change versus BF16 (pp, 95\% CI), 2,000
 evaluation problems, Qwen2.5-1.5B-Instruct candidates. Winner change: share of
 problems whose selected candidate differs from BF16's. Majority vote: 72.1--72.7\%;
@@ -35,7 +36,7 @@ Skywork-8B & BF16 & 72.9 & -- & -- \\
  & NF4 & 72.9 & $-0.05$ [$-0.75$, $+0.65$] & 21\% \\
  & GPTQ-W4 & 73.1 & $+0.15$ [$-0.65$, $+0.95$] & 25\% \\
  & GPTQ-W3 & 71.3 & $-1.60$ [$-2.75$, $-0.45$] & 50\% \\
-Qwen2.5-Math-PRM-7B & BF16 & 76.6 & -- & -- \\
+PRM-7B & BF16 & 76.6 & -- & -- \\
  & NF4 & 76.5 & $-0.05$ [$-0.65$, $+0.50$] & 25\% \\
  & GPTQ-W4 & 76.3 & $-0.30$ [$-1.05$, $+0.45$] & 33\% \\
  & GPTQ-W3 & 75.3 & $-1.30$ [$-2.30$, $-0.25$] & 54\% \\
@@ -83,7 +84,7 @@ lenient grader the effect is $+1.55$\pp\ $[+0.45, +2.65]$. To measure it directl
 human rater graded, blind to arm, verifier and grader verdicts, every Best-of-32
 winner without an extractable final answer in either arm (94 responses) plus 30
 random controls; a blinded second pass resolved every ``unsure'' verdict
-(Appendix~\ref{app:audit}). With these human verdicts replacing the strict grader on
+(\ref{app:audit}). With these human verdicts replacing the strict grader on
 all audited winners, c2 is $+1.40$\pp\ $[+0.30, +2.50]$ (4B GPTQ-W4 75.5\% versus 1.7B
 BF16 74.1\%). We therefore report $+1.4$\pp\ as the format-corrected size of the
 registered effect. It does not depend on label noise or truncation: with GSM8K
@@ -152,7 +153,7 @@ problems where the BF16 PRM had picked an answer different from majority vote
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.8\linewidth]{figures/retention.pdf}
+\includegraphics[width=\linewidth]{figures/retention.pdf}
 \caption{Verifier advantage over majority vote (Best-of-32 accuracy minus majority
 vote@32) in BF16 (open circles) and with GPTQ-W4 (diamonds), for the 8B ORM and the PRM,
 across regimes. Main-study rows are exploratory subsets; H6 and H7 are separately

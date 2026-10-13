@@ -1,0 +1,74 @@
+\section{Implementation details}\label{app:impl}
+
+\paragraph{Prompt.} Every generator receives the system prompt ``Please reason step by
+step, and put your final answer within \texttt{\textbackslash boxed\{\}}.'' and the
+problem as the user turn, through its chat template. For Llama-3.2-3B the instruction is
+repeated at the end of the user turn (registered deviation; without it 34\% of its
+candidates had no extractable answer).
+
+\paragraph{Verifier inputs.} The Skywork ORMs receive the (problem, response) pair as a
+user/assistant conversation without system prompt and output a scalar from their reward
+head. The PRM receives its documented system prompt, the problem, and the response split
+into steps at blank lines, separated by its step token; the score is the minimum step reward (the last-step reward is stored for
+sensitivity).
+
+\paragraph{Quantization.} All linear layers inside the transformer blocks are quantized;
+embeddings, norms and the reward head stay in BF16. GPTQ uses group size 128, symmetric
+quantization and 1\% diagonal damping, calibrated on 128 WikiText-2 sequences of 512
+tokens with a fixed seed. Every quantized model is audited by fingerprinting all
+parameters before and after quantization: every target layer must change (252 of 252
+for the 8B ORM, 196 of 196 for the PRM) and no other parameter may change.
+
+\paragraph{PRM rotary buffers.}\label{app:prm} Under recent versions of
+\texttt{transformers}, Qwen2.5-Math-PRM-7B's remote modelling code is instantiated on the
+meta device and its non-persistent rotary-embedding buffers come back uninitialised
+after loading. Scores computed this way were below the random-candidate rate. We
+recompute the buffers exactly as the model's own initialisation does and check them at
+every load; all PRM results in this paper use repaired buffers, and the affected scores
+were discarded (registered deviation).
+
+\paragraph{Compute.} All experiments ran on single cloud GPUs (mostly RTX 4090; some
+follow-up runs on L40S and other GPUs of at least 24~GB, with BF16 and quantized runs of
+a verifier always on the same GPU). The total cost of all experiments was about
+55~EUR.
+
+\section{Blinded audits of the outcome measure}\label{app:audit}
+
+\paragraph{Format audit.} Fifty untruncated candidates without an extractable answer,
+stratified by domain and lenient-grader verdict, were graded blind to generator,
+verifier, condition and grader verdict by an AI model. The lenient grader accepted no
+wrong answer (30/30 confirmed) and missed 5 of 20 correct ones; it is a conservative
+lower bound on prose correctness.
+
+\paragraph{Exhaustive c2 audit.} All 94 unique Best-of-32 winners without an extractable
+final answer in either arm of the registered memory-frontier contrast, plus 30 random
+winners with one, were shown to a human rater (the author) with the problem, the
+reference answer and the full response, rendered with mathematical typesetting, and
+nothing else; responses that reached the length limit were marked as such and graded as
+incorrect by a rule fixed beforehand. The rater judged 83 correct, 29 incorrect and 12
+unsure. A blinded second pass (same view, key unopened) re-examined every unsure and
+incorrect verdict, resolved all 12 unsure verdicts as incorrect (9 with wrong reasoning,
+3 with correct reasoning cut by the length limit) and confirmed every incorrect one; it
+also flagged two GSM8K problems with questionable labels, both of which GSM8K-Platinum
+removes. On the 30 controls the strict grader and the human agree on 29. On the 94
+winners without an extractable answer the strict grader scores all as wrong, the human
+judges 60 correct, and the lenient grader agrees with the human on 85.
+
+\section{Analysis plans and deviations}\label{app:deviations}
+
+The main study's plan registered five contrasts before any evaluation score was opened,
+and an amendment, made after candidate pools existed but before any verifier had scored
+them, renamed two hypotheses to match their estimands, fixed populations and test rules,
+and set a decision rule for the calibration study (c3, not run). The two follow-up
+studies were each fixed, with their item manifests and analysis code, before their
+candidates were generated, and their pool hashes were recorded before scoring. Every
+amendment was reviewed by an independent AI reviewer before freezing. The deviations,
+all documented with dates in the repository, were: the Llama prompt repetition; the PRM
+rotary-buffer repair and rescoring; the frozen calibration hyper-parameter of the unrun
+c3 method; exploratory additions after the main results (bit-width dose-response, the
+1.7B packed model in the frontier); in H6, the loss and regeneration of the first
+candidate pool (never inspected) and a scoring split across four GPUs; in H7, the use of
+GPUs other than the RTX 4090 for lack of availability and the computation of
+lenient-grader verdicts with time limits equivalent to those on Linux; and corrections
+to the follow-up analysis script made before H7 data existed, which reproduce all H6
+results exactly.
