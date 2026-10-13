@@ -1,0 +1,56 @@
+\section{Introduction}\label{sec:intro}
+
+Sampling several candidate solutions and letting a learned verifier pick one
+(Best-of-$N$) is one of the simplest ways to turn extra inference compute into accuracy
+on mathematical reasoning \cite{cobbe2021gsm8k,lightman2023verify,snell2024scaling}. The
+verifier is usually a reward model of a few billion parameters: an outcome reward model
+(ORM) that scores a complete response, or a process reward model (PRM) that scores each
+reasoning step. In deployment it competes with the generator for accelerator memory. A
+natural way to make room is post-training quantization (PTQ) of the verifier's weights
+to 4 bits or fewer \cite{frantar2023gptq,lin2024awq,dettmers2023qlora}.
+
+Whether this is safe is not obvious. PTQ is usually evaluated by perplexity or by the
+accuracy of the quantized model on its own task, whereas a verifier only needs to
+\emph{rank} candidates correctly. Small score perturbations are harmless if they do not
+reorder the top of the ranking, but Best-of-$N$ amplifies errors at the top: as $N$
+grows, the selected candidate is increasingly the one whose score error is largest
+\cite{gao2023overoptimization}. One might therefore expect quantization damage to grow
+with the budget $N$ and with problem difficulty, and to matter most for small
+verifiers. Conversely, if quantized verifiers select as well as full-precision ones, a
+memory budget is better spent on a larger quantized verifier than on a smaller
+full-precision one.
+
+We study these questions in a preregistered, controlled setting. A fixed pool of 32
+candidates per problem is generated once and frozen, so that every verifier and every
+precision ranks exactly the same responses and differences in accuracy can only come
+from the verifier. We evaluate three ORM sizes and one PRM in BF16, NF4, GPTQ (4 and 3
+bits), AWQ and round-to-nearest, on 2,000 GSM8K and MATH problems, and measure memory
+with packed 4-bit kernels. Five contrasts were registered before any evaluation score
+was opened; two follow-up studies with a stronger generator and with new problems were
+registered before their data existed.
+
+Our contributions are:
+\begin{enumerate}
+\item \textbf{Equivalence at 4 bits.} Quantizing an 8B ORM with GPTQ-W4 leaves
+Best-of-32 accuracy unchanged within $\pm1.3$\pp\ (registered equivalence test at
+$\pm3$\pp), and the result replicates in a preregistered follow-up with a 7B math
+generator on hard problems for both an ORM and a PRM. Three bits is where degradation
+starts, sharply so for the smallest verifier.
+\item \textbf{A memory-budget rule.} Under a 6~GB verifier budget, a 4B ORM with packed
+4-bit weights beats the best full-precision verifier that fits by 2.25\pp\ (registered;
+1.4\pp\ after correcting the strict grader with exhaustive blinded human grading).
+\item \textbf{A mechanism.} Quantization changes the selected candidate on a quarter to
+a third of problems at 4 bits, but rarely the correctness of the selected answer,
+because candidates are redundant: damage is confined to contested problems where
+competing answers have similar support, and quantization noise tends to move the
+selection towards the consensus answer.
+\item \textbf{Value retention.} \todo{H7: where the verifier beats majority vote, 4-bit
+keeps (at least half of) the advantage.} With a strong generator, however, majority
+vote matches or beats reward-model selection on hard problems, which limits how much
+value a verifier can add in the first place.
+\item \textbf{Evaluation lessons.} Strict answer graders can turn reward-model format
+preferences into spurious quantization ``gains''; we show how a format/content
+decomposition, a lenient grader, blinded audits and revised labels resolve this, and
+report two registered hypotheses (damage grows with difficulty and with $N$) that the
+evaluation data did not support.
+\end{enumerate}
