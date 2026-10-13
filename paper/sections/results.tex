@@ -53,9 +53,11 @@ The dotted line is unweighted majority vote over the same $N$ candidates.}\label
 
 Three bits is where selection starts to degrade: GPTQ-W3 costs 1.3--1.8\pp\ for the
 4B, 8B and PRM verifiers and 13.2\pp\ for the 1.7B ORM, whose selection collapses
-towards the random-candidate rate. The RTN dose-response (W8 $\approx$ BF16, W4
-$\approx$ GPTQ-W4) places the threshold between 4 and 3 bits for this model family
-\todo{RTN numbers from phase3b table}.
+towards the random-candidate rate. The method matters little at 4 bits for the 4B and
+8B ORMs (AWQ-W4: $0.00$ and $+0.55$\pp; round-to-nearest RTN-W4: $+0.25$ and
+$+0.90$\pp; RTN-W8 on the 8B: $+0.25$\pp, winner change 6\%), but the 1.7B ORM is
+sensitive to it: RTN-W4 costs it $2.8$\pp\ $[-4.0, -1.7]$ against $1.1$\pp\ for
+GPTQ-W4. Smaller verifiers are less robust to coarser quantization.
 
 \subsection{Under a memory budget, quantize the larger verifier}\label{sec:frontier}
 
@@ -169,7 +171,12 @@ strict grader scores as wrong, and quantization weakens that preference (4B GPTQ
 format term $+3.0$, content term $0.0$; lenient $+0.4$\pp). MATH effects are content
 effects under both graders. We do not report any quantization ``gain''.
 
-\paragraph{Second generator.} \todo{Llama-3.2-3B results, exploratory.}
+\paragraph{Second generator.} On 300 problems with Llama-3.2-3B-Instruct candidates
+(exploratory), GPTQ-W4 changes the PRM's Best-of-32 accuracy by $+0.33$\pp\
+$[-3.00, +4.00]$ and NF4 by $-0.67$\pp; for the 4B ORM the strict grader shows
+$+8.0$\pp, which shrinks to $+2.0$\pp\ $[0.0, +4.3]$ under the lenient grader, again a
+format effect. With this generator, majority vote (76.3\%) beats both verifiers in BF16
+(ORM 63.7\%, PRM 70.7\%).
 
 \paragraph{Labels and truncation.} With GSM8K-Platinum labels c1 is $+0.44$\pp\
 (c4 and c5 involve MATH only and are unchanged); with truncated candidates removed
