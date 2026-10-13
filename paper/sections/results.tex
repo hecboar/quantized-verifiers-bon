@@ -123,13 +123,22 @@ part of the registered family. The registered strict-grader effect is therefore 
 upper estimate, and we regard $+1.4$\pp\ as the more realistic size. It does not depend
 on label noise or truncation: with GSM8K labels replaced by GSM8K-Platinum it is
 $+2.37$\pp, and with length-truncated candidates removed before selection $+2.20$\pp\
-(strict grader). \todo{memory/throughput re-measurement incl. PRM (exp. C)}
+(strict grader).
+
+A re-measurement on another RTX 4090 (exploratory) reproduced the registered peak
+memory of every Skywork deployment to within 0.01~GiB and added the PRM: 16.7~GiB in
+BF16 and 8.0~GiB with deployed NF4, whose scores are identical to the simulated NF4
+condition. With the PRM included, the best tested deployment under an 8~GiB budget is
+the NF4 PRM (76.5\%), while the 6~GB comparison of c2 is unchanged. Four-bit weights did
+not slow scoring with this workload: throughput was within 1--4\% of BF16 for every model
+(e.g.\ 8B ORM: 9.8 sequences/s in BF16, 9.7 with packed GPTQ-W4 and with NF4).
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.75\linewidth]{figures/frontier.pdf}
-\caption{Accuracy against measured verifier memory for the tested Skywork ORM
-deployments (Best-of-32, main study, 2,000 problems). Memory is the peak allocation while
+\caption{Accuracy against measured verifier memory for the tested Skywork ORM and PRM
+deployments (Best-of-32, main study, 2,000 problems; PRM memory from the exploratory
+re-measurement). Memory is the peak allocation while
 scoring a fixed workload (64 sequences of 900 tokens, RTX 4090, no generator); GPTQ-W4
 uses packed 4-bit kernels and NF4 \texttt{bitsandbytes}. Vertical lines mark the
 registered ceilings, the dashed one the primary 6~GB ceiling of c2 (applied to GiB). The

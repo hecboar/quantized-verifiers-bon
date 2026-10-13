@@ -74,11 +74,21 @@ def fig_frontier(st):
         v, scheme = key.split("__")
         a, *_ = acc32(st, G, v, dep[scheme])
         rows.append({"v": v, "scheme": scheme, "mem": m["peak_gb"], "acc": 100 * a.mean()})
+    # PRM (revision measurement, same workload and GPU type): BF16 and bitsandbytes NF4, whose
+    # scores are bit-identical to the simulated NF4 condition
+    rev = Path("outputs/memory_revision.json")
+    if rev.exists():
+        mr = json.loads(rev.read_text())
+        for scheme in ("bf16", "nf4"):
+            key = f"prm-7b__{scheme}"
+            if key in mr and "peak_gb" in mr[key]:
+                a, *_ = acc32(st, G, "prm-7b", scheme)
+                rows.append({"v": "prm-7b", "scheme": scheme, "mem": mr[key]["peak_gb"], "acc": 100 * a.mean()})
     df = pd.DataFrame(rows)
     fig, ax = plt.subplots(figsize=(4.6, 3.0))
     for c in (4, 6, 8, 12, 16):
         ax.axvline(c, color=GRID if c != 6 else MUTED, lw=0.8, ls="--" if c == 6 else "-", zorder=0)
-        ax.text(c, 74.9, f"{c} GiB", ha="center", va="bottom", fontsize=7, color=INK2)
+        ax.text(c, 77.15, f"{c} GiB", ha="center", va="bottom", fontsize=7, color=INK2)
     front = df.sort_values("mem")
     best, fx, fy = -1, [], []
     for r in front.itertuples():
@@ -99,12 +109,13 @@ def fig_frontier(st):
                    linewidth=1.2, zorder=4 if s == "nf4" else 3,
                    label=name + (" (packed)" if s == "gptq-w4" else ""))
         for r in d.itertuples():
-            ax.annotate(r.v.replace("sky-", "").upper(), (r.mem, r.acc), xytext=(4, -9 if s == "nf4" else 4),
+            lab = "PRM" if r.v == "prm-7b" else r.v.replace("sky-", "").upper()
+            ax.annotate(lab, (r.mem, r.acc), xytext=(4, -9 if s == "nf4" else 4),
                         textcoords="offset points", fontsize=6.5, color=INK2)
     ax.set_xlabel("Peak verifier memory (GiB, 64 x 900-token batch)")
     ax.set_ylabel("Best-of-32 accuracy (%)")
     ax.set_xlim(1.5, 17.5)
-    ax.set_ylim(69.5, 75.5)
+    ax.set_ylim(69.5, 77.7)
     ax.legend(loc="lower right", fontsize=7)
     save(fig, "frontier")
     df.to_csv(OUT / "frontier_data.csv", index=False)
