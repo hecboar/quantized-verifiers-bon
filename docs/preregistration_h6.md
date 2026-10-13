@@ -224,3 +224,24 @@ generation round — H6b makes the regime part of the tested hypothesis instead;
 limitations).
 
 Deviations are appended below with date and reason.
+
+**2026-10-13 01:50 — H6 pools frozen, before any scoring.** The first generation run
+(pod `rvi9h5x6w1gnbm`, 2026-10-12) completed but its outputs could not be retrieved:
+the local watcher died with the Claude Code session, the pod self-stopped after its
+grace period, and RunPod could not restart it (no free GPU on its host, also with zero
+GPUs). No candidate of that run was ever seen (only vLLM progress bars). The pools were
+regenerated with identical settings and code (pod `z82q34aam5348p`); the unretrieved
+pool is discarded unopened and its pod deleted. Watchers now run detached from the
+session, with a 3-hour grace period.
+
+| pool | questions x candidates | sha256 |
+|---|---|---|
+| `candidates/qwen2.5-math-7b__eval` (annotated) | 1000 x 32 | `99e7cc20f4665be3d1fbece5c2c322ca7d2342ee6edbe93f11b39a7bb95023f2` |
+| `raw_candidates/qwen2.5-math-7b__eval` | 1000 x 32 | `2dcac2d2964bf11c4b63c7efd1598bc57c624e4594f07b1e6fd84b8b209e5a7f` |
+
+Generator-side statistics (allowed by §3): stratum H accuracy 0.608, extractable
+0.857, truncated at 2,048 tokens 0.194, mean 946 generated tokens; stratum E 0.924 /
+0.982 / 0.026 / 425. The truncation rate is higher than planned; per §3 nothing is
+changed (the registered truncation sensitivity, §7 item 5, covers it). Scoring is split
+over four pods (ORM / PRM x confirmatory / controls) to fit the time window; runs and
+settings are unchanged.
