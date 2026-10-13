@@ -73,6 +73,9 @@ def phase_runs(cfg: dict, phase: str, generator: str | None) -> list[ScoreRun]:
         # H6/H7 generator; generic calibration only (no dev pools of its own)
         gen = cfg[{"phase7_h6": "h6", "phase8_h7": "h7"}[phase]]["generator"]
         return [_from_condition(cfg, gen, r["verifier"], r["condition"]) for r in p["runs"]]
+    if phase == "phase9_revision":
+        # each run names its generator (registered pools or the H7 pools)
+        return [_from_condition(cfg, r["generator"], r["verifier"], r["condition"]) for r in p["runs"]]
     if phase in ("dev_numeric_controls", "phase3b_bits"):
         return [_from_condition(cfg, generator, r["verifier"], r["condition"]) for r in p["runs"]]
     raise ValueError(f"unknown phase {phase!r}")

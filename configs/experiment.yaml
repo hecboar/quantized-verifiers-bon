@@ -61,6 +61,8 @@ conditions:
   awq-w4:    {method: awq,  bits: 4, group_size: 128, calib: generic}
   rtn-w4:    {method: rtn,  bits: 4, group_size: 128}
   rtn-w8:    {method: rtn,  bits: 8, group_size: null}
+  # revision: task-matched calibration (random candidates of the generator's dev pools)
+  gptq-w3-math: {method: gptq, bits: 3, group_size: 128, calib: random}
 
 calibration:
   n_sequences: 128
@@ -131,6 +133,20 @@ phases:
       - {verifier: prm-7b, condition: bf16-null}
       - {verifier: sky-8b, condition: gptq-w3}
       - {verifier: prm-7b, condition: gptq-w3}
+  phase9_revision:                 # docs/preregistration_rev.md (exploratory, after review)
+    runs:
+      - {generator: qwen2.5-1.5b, verifier: tulu-8b, condition: bf16}
+      - {generator: qwen2.5-1.5b, verifier: tulu-8b, condition: gptq-w4}
+      - {generator: qwen2.5-1.5b-h7, verifier: tulu-8b, condition: bf16}
+      - {generator: qwen2.5-1.5b-h7, verifier: tulu-8b, condition: gptq-w4}
+      - {generator: qwen2.5-1.5b, verifier: tulu-8b, condition: gptq-w3}
+      - {generator: qwen2.5-1.5b, verifier: skyllama-8b, condition: bf16}
+      - {generator: qwen2.5-1.5b, verifier: skyllama-8b, condition: gptq-w4}
+      - {generator: qwen2.5-1.5b-h7, verifier: skyllama-8b, condition: bf16}
+      - {generator: qwen2.5-1.5b-h7, verifier: skyllama-8b, condition: gptq-w4}
+      - {generator: qwen2.5-1.5b, verifier: skyllama-8b, condition: gptq-w3}
+      - {generator: qwen2.5-1.5b, verifier: sky-1.7b, condition: gptq-w3-math}
+      - {generator: qwen2.5-1.5b, verifier: sky-8b, condition: gptq-w3-math}
   dev_numeric_controls:
     runs:
       - {verifier: sky-4b, condition: rtn-w4}

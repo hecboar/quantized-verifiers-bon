@@ -187,6 +187,9 @@ VERIFIERS = {
     "sky-4b": VerifierSpec("sky-4b", "Skywork/Skywork-Reward-V2-Qwen3-4B", "orm"),
     "sky-8b": VerifierSpec("sky-8b", "Skywork/Skywork-Reward-V2-Qwen3-8B", "orm"),
     "prm-7b": VerifierSpec("prm-7b", "Qwen/Qwen2.5-Math-PRM-7B", "prm"),
+    # revision (docs/preregistration_rev.md): reward models outside the Qwen/Skywork-Qwen family
+    "skyllama-8b": VerifierSpec("skyllama-8b", "Skywork/Skywork-Reward-V2-Llama-3.1-8B", "orm"),
+    "tulu-8b": VerifierSpec("tulu-8b", "allenai/Llama-3.1-Tulu-3-8B-RM", "orm"),
     # local smoke-test model (CPU)
     "sky-0.6b": VerifierSpec("sky-0.6b", "Skywork/Skywork-Reward-V2-Qwen3-0.6B", "orm"),
 }
@@ -209,6 +212,8 @@ def load_verifier(spec: VerifierSpec, device: str = "cuda", dtype=torch.bfloat16
             kwargs["attn_implementation"] = "sdpa"
     if spec.kind == "orm":
         model = from_pretrained_compat(AutoModelForSequenceClassification, spec.hf_id, dtype=dtype, num_labels=1, **kwargs)
+        if model.config.pad_token_id is None:  # e.g. Tulu-3 RM: pooling needs the tokenizer's pad id
+            model.config.pad_token_id = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
     else:
         from transformers import AutoConfig
 

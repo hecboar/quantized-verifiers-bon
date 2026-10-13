@@ -637,7 +637,7 @@ def cmd_measure_memory(args) -> None:
     from .memory_bench import measure_all
 
     report = measure_all(args.verifiers.split(","), OUT / "store", OUT / "packed")
-    (OUT / "memory.json").write_text(json.dumps(report, indent=1))
+    (OUT / args.out).write_text(json.dumps(report, indent=1))
     print(json.dumps(report, indent=1))
 
 
@@ -756,6 +756,7 @@ def main(argv=None) -> None:
     sp.add_argument("--split", default="dev")
     sp = add("measure-memory", cmd_measure_memory)
     sp.add_argument("--verifiers", default="sky-1.7b,sky-4b,sky-8b,prm-7b")
+    sp.add_argument("--out", default="memory.json", help="file under outputs/ (revision: memory_revision.json)")
     sp = add("gate", cmd_gate)
     sp.add_argument("--generator", required=True)
     sp.add_argument("--verifier", default="sky-4b")
