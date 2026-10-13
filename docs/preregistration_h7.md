@@ -148,3 +148,15 @@ runs of a verifier share the GPU, so every confirmatory contrast is within-hardw
 
 Generator-side statistics: accuracy 0.364 (Level 4: 0.390, Level 5: 0.209), extractable
 0.861, truncated 0.134 (Level 4: 0.125, Level 5: 0.189), mean 613 generated tokens.
+
+**2026-10-13 — lenient verdicts computed with a timeout (implementation, after scoring,
+before the analysis completed).** The first run of the registered analysis on Windows
+was stopped twice: the lenient grader re-grades extractable answers with math_verify,
+which `vq.grading` runs with 5 s timeouts on Linux but without any timeout on Windows,
+and one process grew to 18 GB. Lenient verdicts were therefore computed by
+`scripts/lenient_cache.py`, with the semantics of `grade_lenient` on Linux: for
+candidates with an extractable answer, grade_lenient equals the strict grade, so the
+annotated verdict (graded on the Linux pod, with timeouts) is reused; the other 4,724
+candidates are graded with a 5 s limit each (0 timeouts). `scripts/analyze_h6.py` gained
+a `--lenient-cache` option that reads these verdicts; nothing else changed. Only
+exploratory lenient-grader rows depend on this.

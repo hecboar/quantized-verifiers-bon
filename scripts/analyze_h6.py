@@ -67,6 +67,7 @@ def main():
     ap.add_argument("--hard", default="data/manifest_h6_hard.json")
     ap.add_argument("--easy", default="data/manifest_h6_easy.json")
     ap.add_argument("--out", default="outputs/tables/h6")
+    ap.add_argument("--lenient-cache", default=None, help="parquet from scripts/lenient_cache.py")
     ap.add_argument("--prefix", default="H6", help="hypothesis label prefix (H7 reuses this frozen analysis)")
     ap.add_argument("--dry-run", action="store_true", help="test on an existing pool; results are not H6")
     a = ap.parse_args()
@@ -81,7 +82,11 @@ def main():
     qids = sorted(cand.question_id.unique())
     Cn = cand.groupby("question_id").size().iloc[0]
     trunc = cand.truncated.to_numpy(bool).reshape(len(qids), Cn)
-    L = np.array([grade_lenient(t, items[q].gold, items[q].kind) for q, t in zip(cand.question_id, cand.text)])
+    if a.lenient_cache:  # scripts/lenient_cache.py: same verdicts, safe on Windows (math_verify timeouts)
+        lz = pd.read_parquet(a.lenient_cache).set_index(["question_id", "cand"]).correct_lenient
+        L = lz.loc[list(zip(cand.question_id, cand.cand))].to_numpy(bool)
+    else:
+        L = np.array([grade_lenient(t, items[q].gold, items[q].kind) for q, t in zip(cand.question_id, cand.text)])
     L = L.reshape(len(qids), Cn)
     mH = np.array([q in hard for q in qids])
     mE = np.array([q in easy for q in qids])
