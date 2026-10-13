@@ -131,3 +131,20 @@ Appended below with date and reason.
 | composition | Level 4: 905, Level 5: 155; algebra 252, intermediate algebra 227, prealgebra 156, number theory 120, geometry 116, precalculus 104, counting & probability 85 |
 | analysis code | `scripts/analyze_h6.py` at the freeze commit (re-verified on H6: identical outputs) |
 | candidate pool sha256 | appended as a deviation-log entry before scoring |
+
+**2026-10-13 14:30 — H7 pools frozen, before any scoring.** No RTX 4090 was available
+in either RunPod cloud for 20 minutes; per this deviation the launcher accepts a list of
+GPU types of equal or larger memory (RTX 4090, RTX 5090, RTX 5000 Ada, RTX PRO 4500
+Blackwell, L40S, RTX 6000 Ada, A40) and uses the first available. Generation ran on a
+300 W, 0.59 USD/h SECURE GPU of that list. Generation settings are the registered ones
+(recorded in the pool metadata: max_tokens 1024, temperature 0.8, top_p 1.0, seeds 0-3 x
+8). Scoring may also run on any GPU of the list; within each pod the BF16 and quantized
+runs of a verifier share the GPU, so every confirmatory contrast is within-hardware.
+
+| pool | questions x candidates | sha256 |
+|---|---|---|
+| `candidates/qwen2.5-1.5b-h7__eval` (annotated) | 1060 x 32 | `a2f124bf790842ac0e3861fec37a172f21e49af8b42ae1e00854bf3880583888` |
+| `raw_candidates/qwen2.5-1.5b-h7__eval` | 1060 x 32 | `756118131fe39b7a6aa6c2cfa45724a2e9b2fb606c6f44f3789daf150a2049b7` |
+
+Generator-side statistics: accuracy 0.364 (Level 4: 0.390, Level 5: 0.209), extractable
+0.861, truncated 0.134 (Level 4: 0.125, Level 5: 0.189), mean 613 generated tokens.
