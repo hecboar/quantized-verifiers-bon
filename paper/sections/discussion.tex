@@ -12,7 +12,7 @@ varies between models even when it is small. Under the tested 6~GB verifier budg
 verifier that fit. Three bits was not robust with generic calibration: it cost
 1.3--1.8\pp\ for the larger verifiers in the main study, 2.6--3.5\pp\ in H7, and
 13.2\pp\ for the 1.7B ORM, which was also sensitive to the quantization method at 4 bits
-(RTN versus GPTQ). Calibrating on in-domain candidates instead of generic text removed
+(RTN versus GPTQ), and 12.6--26.4\pp\ for the two Llama-based reward models. Calibrating on in-domain candidates instead of generic text removed
 most of this 3-bit loss in an exploratory test (8B ORM: $-0.05$\pp; 1.7B: $-3.75$
 instead of $-13.15$\pp), so the calibration data matter as much as the bit width at
 3 bits. These conclusions are specific to the tested checkpoints, quantization recipes,

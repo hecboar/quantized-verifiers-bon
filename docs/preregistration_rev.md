@@ -53,3 +53,8 @@ but the two main-pool GPTQ-W3 runs reached the 5-hour pod limit at 30/34 and 31/
 shards and are not reported (a partial, non-random subset). RunPod spend for the four
 pods: 12.25 USD (balance 23.96 -> 11.71 USD). Results: `outputs/tables/revision/`
 (`runs_A.csv`, `runs_B.csv`, `memory_C.csv`), `outputs/memory_revision.json`.
+
+**2026-10-14, W3 re-run.** The two incomplete main-pool GPTQ-W3 runs of the new reward
+models were re-run from scratch on two pods (the partial shards were archived, not
+resumed, to avoid mixing two quantizations); both completed. Spend 2.34 USD (balance
+11.71 -> 9.37 USD).
