@@ -59,7 +59,9 @@ def transitions(S0, S1, C, K):
     r = np.arange(len(C))
     w0, w1 = S0.argmax(1), S1.argmax(1)
     c0, c1 = C[r, w0], C[r, w1]
-    return {"cand_change": float(np.mean(w0 != w1)), "answer_change": float(np.mean(K[r, w0] != K[r, w1])),
+    ch = w0 != w1
+    ans = (K[r, w0] != K[r, w1]) | (ch & (K[r, w0] < 0))
+    return {"cand_change": float(np.mean(ch)), "answer_change": float(np.mean(ans)),
             "harm": float(np.mean(c0 & ~c1)), "benefit": float(np.mean(~c0 & c1))}
 
 

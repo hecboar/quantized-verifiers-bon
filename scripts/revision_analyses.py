@@ -115,7 +115,8 @@ def main():
         w0, w1 = winners(S0), winners(S1)
         c0, c1 = C1[r, w0], C1[r, w1]
         changed = w0 != w1
-        ans_changed = K1[r, w0] != K1[r, w1]
+        # two different winners without an extractable answer are not 'the same answer'
+        ans_changed = (K1[r, w0] != K1[r, w1]) | (changed & (K1[r, w0] < 0))
         d = {"study": study, "verifier": v, "condition": c, "n": int(msk.sum()),
              "candidate_change": changed[msk].mean(), "answer_change": ans_changed[msk].mean(),
              "same_answer_share_of_changes": (changed & ~ans_changed)[msk].sum() / max(1, changed[msk].sum()),
