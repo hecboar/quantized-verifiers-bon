@@ -283,8 +283,14 @@ H7 are separately planned studies on new problems.}\label{fig:retention}
 \paragraph{Other reward-model families} \todo{A1/A2: Skywork-V2-Llama-3.1-8B and
 Tulu-3-8B-RM, main and H7.}
 
-\paragraph{Task-matched calibration at 3 bits} \todo{B: GPTQ-W3 with in-domain
-calibration vs generic.}
+\paragraph{Task-matched calibration at 3 bits} Much of the 3-bit loss comes from the
+generic calibration data (exploratory). Calibrating GPTQ-W3 on 128 candidates sampled
+from the generator's development pools instead of WikiText changes $\Delta_{32}$ from
+$-13.15$ to $-3.75$\pp\ $[-5.25, -2.30]$ for the 1.7B ORM (a recovery of $+9.4$\pp\
+$[+7.6, +11.3]$) and from $-1.60$ to $-0.05$\pp\ $[-1.00, +0.90]$ for the 8B ORM
+($+1.55$\pp\ $[+0.40, +2.75]$). The calibration problems are development problems,
+disjoint from the evaluation set. The 3-bit boundary we observe is therefore a property
+of the recipe, not only of the bit width.
 
 \paragraph{Selection rules} The 4-bit result does not depend on the selection rule
 (exploratory, main study, $N=32$): with a reward-weighted answer vote (temperature

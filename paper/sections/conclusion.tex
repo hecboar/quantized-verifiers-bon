@@ -8,8 +8,9 @@ margin in the main study and in two follow-up studies, and where the verifier be
 majority vote they kept more than half of that advantage (an estimated 93\% for the
 PRM). Under the tested 6~GB verifier budget, the 4B ORM with packed 4-bit weights was
 the best tested deployment. Quantization changes the selected candidate often, but the
-selected answer much less often, consistent with answer redundancy in the pools; 3-bit
-GPTQ with generic calibration and the smallest verifier are where selection degrades.
+selected answer much less often, consistent with answer redundancy in the pools. Three-bit
+GPTQ with generic calibration degrades selection, most for the smallest verifier, but
+in-domain calibration recovers most of the loss.
 Two practical caveats travel with these results. Compare a verifier against majority
 vote on one's own generator, because with a strong generator it may add little; and
 evaluate selection with a grader that is robust to answer format, because a strict
