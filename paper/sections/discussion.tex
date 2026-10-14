@@ -5,7 +5,9 @@ parameters and above, 4-bit weight-only GPTQ preserved Best-of-$N$ accuracy in t
 prospectively planned settings (two generators, three problem sets, an ORM family and
 a PRM), and where the verifier beat majority vote it kept most of that advantage. NF4
 and AWQ behaved similarly in the exploratory grid but were not part of the follow-up
-studies. Under the tested 6~GB verifier budget and workload, a 4B ORM with packed
+studies. Two reward models on a Llama backbone also stayed within the margin, but lost
+0.6--1.5\pp\ and changed their selections more often, so the size of the 4-bit effect
+varies between models even when it is small. Under the tested 6~GB verifier budget and workload, a 4B ORM with packed
 4-bit weights was the best tested deployment, ahead of the best full-precision
 verifier that fit. Three bits was not robust with generic calibration: it cost
 1.3--1.8\pp\ for the larger verifiers in the main study, 2.6--3.5\pp\ in H7, and
@@ -53,8 +55,9 @@ visible.
 
 \paragraph{Limitations} The main-study ORMs come from a single family (Skywork-Reward-V2,
 built on Qwen3), the PRM is a Qwen model and the generators are Qwen and Llama models;
-the two additional reward models address the backbone and training-family question only
-in an exploratory way. Accuracy experiments use simulated quantization; packed 4-bit
+the two additional Llama-based reward models address the backbone and training-family
+question only in an exploratory way, and neither added value over majority vote, so
+value retention outside the Qwen-based verifiers is untested. Accuracy experiments use simulated quantization; packed 4-bit
 kernels agreed with it on 98.8--99.2\% of selected answers, and memory was measured for
 one scoring workload without the generator. The confirmatory GPTQ results use generic calibration with a
 single calibration draw; in-domain calibration was tested only at 3 bits and for two
