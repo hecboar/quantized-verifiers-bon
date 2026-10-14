@@ -44,3 +44,12 @@ RunPod balance at launch about 24 EUR; expected cost about 8 EUR, cap 16 EUR. Fo
 (A1, A2, B, C); A1/A2/B may run on any GPU of >= 24 GB from the H7 list (BF16 and
 quantized runs of a verifier share the GPU); C on an RTX 4090 only. Watchers run
 detached; pods are deleted after each step.
+
+## Execution record (2026-10-14)
+
+All four pods completed and were deleted. C (memory/throughput) and B (in-domain W3
+calibration) finished; A finished every BF16 and GPTQ-W4 run on the main and H7 pools,
+but the two main-pool GPTQ-W3 runs reached the 5-hour pod limit at 30/34 and 31/34
+shards and are not reported (a partial, non-random subset). RunPod spend for the four
+pods: 12.25 USD (balance 23.96 -> 11.71 USD). Results: `outputs/tables/revision/`
+(`runs_A.csv`, `runs_B.csv`, `memory_C.csv`), `outputs/memory_revision.json`.
