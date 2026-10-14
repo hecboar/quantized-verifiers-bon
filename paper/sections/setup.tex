@@ -4,10 +4,10 @@
 
 The design, estimands and tests were specified prospectively in a version-controlled
 repository, with a stated chronology (Table~\ref{tab:chronology} in
-\ref{app:deviations}). For the main study the plan and its amendments were committed
-after the candidate pools had been generated but before any verifier score on the
-evaluation problems existed; only generator-side statistics (accuracy, share of
-extractable answers, truncation) had been inspected at that point. The two follow-up
+\ref{app:deviations}). For the main study, the initial plan and its first amendment preceded the generation
+of the evaluation candidates; the final amendment followed an inspection of
+generator-side statistics only (accuracy, share of extractable answers, truncation) and
+preceded any verifier scoring of evaluation problems. The two follow-up
 studies were fixed, with their problem manifests and analysis code, before their
 candidates were generated. We did not use an external registry, so the commit history
 is the record of what was fixed when. Hypotheses are labelled c1--c5 (main study),
@@ -20,14 +20,14 @@ Table~\ref{tab:populations} lists every population. The main evaluation set has 
 problems: 800 from the GSM8K test split \cite{cobbe2021gsm8k}, 400 sampled from MATH500
 \cite{lightman2023verify}, and 800 further MATH test problems \cite{hendrycks2021math}
 outside MATH500, sampled with a fixed seed. The first 1,200 (GSM8K and MATH500) form the
-original manifest, frozen before the MATH extension was added, and are the registered
+original manifest, frozen before the MATH extension was added, and are the prespecified
 population of c1. A development set of 400 problems (200 GSM8K train, 200 MATH train) was
 used only for the go/no-go gate and for choices assigned to development data.
 
 \begin{table}[!htb]
 \centering
 \small
-\caption{Problem populations. ``New'' problems appear nowhere else in this work
+\caption{Principal evaluation populations. ``New'' problems appear nowhere else in this work
 (text-level exclusion against all other items and against all of MATH500).}\label{tab:populations}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lrll}
@@ -107,7 +107,7 @@ not depend on the verifier. The oracle (pass@32) is correct if any candidate is.
 
 \subsection{Grading}\label{sec:grading}
 
-The registered grader extracts the last \texttt{\textbackslash boxed\{\}} answer (else a
+The prespecified grader extracts the last \texttt{\textbackslash boxed\{\}} answer (else a
 GSM8K-style ``\#\#\#\#'' line or an explicit ``the answer is'' phrase), normalises
 numbers and compares symbolically for MATH. Because a strict grader can confound
 verifier preferences with answer format, we report three checks: a lenient grader (the
@@ -137,25 +137,32 @@ majority-vote outcome) is resampled jointly, so within-problem correlations are 
 \begin{itemize}
 \item \emph{Differences} are reported with 95\% percentile intervals and two-sided
 centred-bootstrap $p$-values.
-\item \emph{Equivalence} at the registered $\pm3$\pp\ margin is tested by two one-sided
+\item \emph{Equivalence} at the prespecified $\pm3$\pp\ margin is tested by two one-sided
 tests (TOST): $p_{\mathrm{TOST}} = \max\{P^*(\bar d \le -0.03),\, P^*(\bar d \ge 0.03)\}$,
 which inverts the percentile interval ($p_{\mathrm{TOST}} \le \alpha$ if and only if the
-$(1-2\alpha)$ interval lies inside the margin). In a simulation at the margin
-($n=800$, skewed three-valued per-problem differences, 2,000 replicates) the rejection
-rate was 0.056, 0.024 and 0.006 at nominal 0.05, 0.025 and 0.0125 (Monte Carlo standard
-error about 0.005).
+$(1-2\alpha)$ interval lies inside the margin). In a simulation with the true mean on either margin
+($n=800$ per-problem differences drawn from $\{-1,-\tfrac12,0,\tfrac12,1\}$ with
+probabilities $(0.075, 0.03, 0.82, 0.03, 0.045)$ for the lower margin and the mirror
+image for the upper one; 2,000 replicates of 2,000 resamples) the rejection rate was
+0.056 and 0.054 at nominal 0.05, 0.024 and 0.025 at 0.025, and 0.006 and 0.004 at 0.0125
+(Monte Carlo standard error about 0.005). The $\pm3$\pp\ margin was fixed in the plan
+before any evaluation score existed; on the c1 population it corresponds to a 13\%
+relative increase in errors.
 \item \emph{Value retention} (H6b, H7b) is one-sided: $p = P^*(\bar R \le 0)$
 (Section~\ref{sec:h6}).
-\item \emph{Resolution}: when no resample exceeds the boundary we report
-$p \le 10^{-4}$ (and $\le m \cdot 10^{-4}$ after Holm adjustment of the $m$-th smallest
-$p$-value), never $p=0$.
+\item \emph{Resolution}: bootstrap $p$-values are Monte Carlo estimates with resolution
+$10^{-4}$. When no resample crosses the boundary we report the count (0/$10^4$) instead
+of $p=0$; the corresponding 95\% Monte Carlo upper bound is $3\cdot10^{-4}$.
 \item \emph{Multiplicity}: Holm correction within each prespecified family (c1--c5;
-H6a/b; H7a/b); a test of the family that was not run keeps $p=1$. The registered
-decision rule for c1 is that its 90\% interval lies inside $\pm3$\pp.
+H6a/b; H7a/b): the $k$-th smallest of $m$ raw $p$-values is multiplied by $m-k+1$ and
+the cumulative maximum is taken; a test of the family that was not run keeps $p=1$. In
+the main-study family, c1 enters with the two-sided $p$-value of its difference test,
+as implemented when the family was fixed; its decision rule is equivalence, judged by
+its 90\% interval lying inside $\pm3$\pp\ (Table~\ref{tab:confirmatory}).
 \end{itemize}
-\noindent The registered contrasts are: c1, $\Delta_{32}$ of the 8B ORM at GPTQ-W4 on
+\noindent The prespecified contrasts are: c1, $\Delta_{32}$ of the 8B ORM at GPTQ-W4 on
 the original 1,200-problem manifest (equivalence); c2, the development-selected
-deployment versus the best BF16 deployment under the 6~GB verifier memory ceiling; c3, a
-calibration method that was not run; c4, $\Delta_{32}$ on the 1,200 MATH problems (4B and
+deployment versus the best BF16 deployment under the 6~GiB verifier memory ceiling; c3, CH-GPTQ (a contrastive-Hessian GPTQ calibration) versus an adapted DPQ recipe,
+which was not run (\ref{app:deviations}); c4, $\Delta_{32}$ on the 1,200 MATH problems (4B and
 8B ORMs, GPTQ-W4, averaged within problem); c5, the change of that loss from $N=4$ to
 $N=32$. Table~\ref{tab:confirmatory} summarises every confirmatory test.

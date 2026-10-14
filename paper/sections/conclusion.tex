@@ -6,10 +6,11 @@ prospectively specified analysis plans, the tested 4-bit GPTQ deployments of ver
 with 4B parameters and above kept Best-of-32 accuracy within a $\pm3$\pp\ equivalence
 margin in the main study and in two follow-up studies, and where the verifier beat
 majority vote they kept more than half of that advantage (an estimated 93\% for the
-PRM). Under the tested 6~GB verifier budget, the 4B ORM with packed 4-bit weights was
+PRM). Under the tested 6~GiB verifier budget, the 4B ORM with packed 4-bit weights was
 the best tested deployment. Quantization changes the selected candidate often, but the
 selected answer much less often, consistent with answer redundancy in the pools. Three-bit
-GPTQ with generic calibration degrades selection, most for the smallest verifier, but
+GPTQ with generic calibration degrades selection: among the Qwen-based ORMs most for the
+smallest one, and severely for both Llama-based reward models; for the Qwen-based ORMs,
 in-domain calibration recovers most of the loss.
 Two practical caveats travel with these results. Compare a verifier against majority
 vote on one's own generator, because with a strong generator it may add little; and

@@ -37,31 +37,31 @@ Polit\`ecnica de Val\`encia},city={Valencia},country={Spain}}
 
 \begin{abstract}
 Reward-model verifiers improve Best-of-$N$ answer selection but compete with the
-generator for accelerator memory. We evaluate post-training weight quantization of the
-verifier on frozen pools of 32 solutions per problem from GSM8K and MATH, using three
+generator for accelerator memory. We evaluate post-training weight quantization of
+verifiers on frozen pools of 32 solutions per problem from GSM8K and MATH, using three
 outcome reward models (1.7B--8B) from one family and a 7B process reward model (PRM),
 with GPTQ, AWQ, NF4 and round-to-nearest. Analysis plans were fixed in version control
-before verifier scoring, and those of two follow-up studies before candidate generation.
+before verifier scoring, and for two follow-up studies before candidate generation.
 On its prespecified 1,200-problem population, the 8B GPTQ-W4 contrast meets a
 $\pm3$-point equivalence bound for Best-of-32 accuracy (difference $+0.33$; 90\%
 interval $-0.58$ to $+1.25$). Two follow-up studies on unused MATH problems support
-GPTQ-W4 equivalence for an 8B outcome verifier and the PRM. Where both verifiers beat
+GPTQ-W4 equivalence for the 8B outcome verifier and the PRM. Where both verifiers beat
 majority vote, the PRM retains an estimated 93\% of its 8.2-point advantage and passes
-the prespecified half-retention test; with a stronger generator, no clear verifier
-advantage was established. Two Llama-based reward models also stay within the bound
-(losses 0.6--1.5 points). Under a verifier-only 6~GB budget, a packed 4-bit 4B
+the prespecified half-retention test; with a stronger generator, neither verifier
+clearly beat it. Two Llama-based reward models also stay within it
+(losses 0.6--1.5 points). Under a verifier-only 6~GiB budget, a packed 4-bit 4B
 outcome verifier outperforms the tested 1.7B full-precision verifier by 2.25 points
-under strict grading and 1.40 points after a human audit, with unchanged throughput.
-Four-bit quantization often changes the selected candidate but rarely its answer;
-3-bit GPTQ degrades selection with generic calibration, much less with in-domain
-calibration. A strict answer grader can turn reward-model format preferences into
-spurious quantization gains, so verifier compression should be evaluated with
+under strict grading and 1.40 points after a human audit, with similar measured
+scoring throughput. Four-bit quantization often changes the selected candidate but much
+less often its answer; 3-bit GPTQ with generic calibration degrades selection, and for
+the Qwen-based verifiers in-domain calibration recovers most of the loss. Strict answer
+grading can turn reward-model format preferences into spurious quantization gains, so verifier compression should be evaluated with
 format-robust grading and against majority vote.
 \end{abstract}
 
 \begin{keyword}
 post-training quantization \sep reward models \sep Best-of-N \sep test-time compute
-\sep mathematical reasoning \sep preregistration
+\sep mathematical reasoning \sep prespecified analysis
 \end{keyword}
 
 \end{frontmatter}

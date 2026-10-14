@@ -29,18 +29,20 @@ with new hard problems, whose plans were fixed before their candidates were gene
 
 Our contributions are:
 \begin{enumerate}
-\item \textbf{Accuracy equivalence at 4 bits.} GPTQ-W4 meets a registered $\pm3$\pp\
+\item \textbf{Accuracy equivalence at 4 bits.} GPTQ-W4 meets a prespecified $\pm3$\pp\
 equivalence bound for Best-of-32 accuracy of an 8B ORM (90\% interval $[-0.58, +1.25]$),
 and the result holds in two follow-up studies for both an ORM and a PRM. Three-bit GPTQ
-with generic calibration degrades selection, severely for the smallest verifier.
+with generic calibration degrades selection, severely for the smallest verifier; in an
+exploratory test, calibrating on in-domain candidates reduced the 1.7B loss from 13.2 to
+3.8\pp.
 \item \textbf{Retained verifier value.} In a follow-up study on 1,060 new hard problems,
 where the verifiers beat majority vote, 4-bit quantization keeps more than half of the
 advantage (prespecified test): the PRM retains an estimated 93\% of an 8.2\pp\
 advantage, the ORM 91\% of a 3.0\pp\ advantage (narrowly significant). With a strong
 generator, no clear verifier advantage over majority vote was established.
-\item \textbf{A tested memory comparison.} Under a 6~GB verifier-only budget and a fixed
+\item \textbf{A tested memory comparison.} Under a 6~GiB verifier-only budget and a fixed
 workload, a 4B ORM with packed 4-bit weights outperforms the best tested full-precision
-verifier that fits by 2.25\pp\ under the registered grader and 1.40\pp\ after a blinded
+verifier that fits by 2.25\pp\ under the prespecified grader and 1.40\pp\ after a blinded
 human audit of unparseable winners.
 \item \textbf{Candidate-level instability without accuracy loss.} Quantization changes
 the selected candidate on a quarter to a half of problems at 4 bits, but the selected
@@ -49,6 +51,6 @@ answer redundancy in the pools.
 \item \textbf{Evaluation lessons.} A strict answer grader can turn reward-model format
 preferences into spurious quantization gains. We show how a format/content
 decomposition, a lenient grader, a blinded human audit and revised labels resolve this,
-and we report two registered hypotheses (damage concentrated on MATH, growing with $N$)
+and we report two prespecified hypotheses (damage concentrated on MATH, growing with $N$)
 that the evaluation data did not support.
 \end{enumerate}
