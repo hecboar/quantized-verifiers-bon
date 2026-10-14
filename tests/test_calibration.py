@@ -11,7 +11,7 @@ def _pool(Q=40, C=8, seed=0):
     return Pool(scores=scores, token_ids=ids)
 
 
-@pytest.mark.parametrize("recipe", sorted(RECIPES - {"generic"}))
+@pytest.mark.parametrize("recipe", sorted(RECIPES - {"generic", "generic_len"}))
 def test_same_sequence_budget(recipe):
     cs = build_recipe(recipe, _pool(), n_sequences=32, seed=0)
     assert len(cs.sequences) == 32
@@ -65,10 +65,26 @@ def test_dpq_adapted_mixes_boundary_and_anchors():
 
 def test_recipes_are_label_free():
     # Pool has no correctness field at all: building must still work
-    for r in RECIPES - {"generic"}:
+    for r in RECIPES - {"generic", "generic_len"}:
         build_recipe(r, _pool(), 16, seed=1)
 
 
 def test_token_totals_reported():
     cs = build_recipe("random", _pool(), 16, seed=0)
     assert cs.meta["n_tokens"] == sum(s.shape[1] for s in cs.sequences)
+
+
+def test_generic_len_matches_random_lengths():
+    pool = _pool()
+    ref = build_recipe("random", pool, 16, seed=0)
+    lengths = [s.shape[1] for s in ref.sequences]
+    chunks = [list(range(i * 50, i * 50 + 50)) for i in range(40)]
+    cs = build_recipe("generic_len", None, 16, seed=0, generic_texts_ids=chunks, lengths=lengths)
+    assert [s.shape[1] for s in cs.sequences] == lengths
+    flat = [t for s in cs.sequences for t in s[0].tolist()]
+    assert len(set(flat)) == len(flat)  # consecutive, non-overlapping pieces
+
+
+def test_generic_len_rejects_short_text():
+    with pytest.raises(ValueError):
+        build_recipe("generic_len", None, 2, seed=0, generic_texts_ids=[[1, 2, 3]], lengths=[5, 5])

@@ -63,6 +63,8 @@ conditions:
   rtn-w8:    {method: rtn,  bits: 8, group_size: null}
   # revision: task-matched calibration (random candidates of the generator's dev pools)
   gptq-w3-math: {method: gptq, bits: 3, group_size: 128, calib: random}
+  # revision 2: length control (generic text with the token lengths of gptq-w3-math's set)
+  gptq-w3-genlen: {method: gptq, bits: 3, group_size: 128, calib: generic_len}
 
 calibration:
   n_sequences: 128
@@ -147,6 +149,10 @@ phases:
       - {generator: qwen2.5-1.5b, verifier: skyllama-8b, condition: gptq-w3}
       - {generator: qwen2.5-1.5b, verifier: sky-1.7b, condition: gptq-w3-math}
       - {generator: qwen2.5-1.5b, verifier: sky-8b, condition: gptq-w3-math}
+      # revision 2 (docs/preregistration_rev.md, amendment 6)
+      - {generator: qwen2.5-1.5b, verifier: prm-7b, condition: gptq-w3-math}
+      - {generator: qwen2.5-1.5b, verifier: tulu-8b, condition: gptq-w3-math}
+      - {generator: qwen2.5-1.5b, verifier: sky-1.7b, condition: gptq-w3-genlen}
   dev_numeric_controls:
     runs:
       - {verifier: sky-4b, condition: rtn-w4}

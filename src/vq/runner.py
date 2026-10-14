@@ -130,9 +130,16 @@ def _work_rows(ctx: RunContext, generator: str, dev_full: bool, dev_scored_only:
 
 
 def _pool_from_dev(ctx: RunContext, run: ScoreRun, scorer: Scorer) -> Pool:
-    s = ctx.store.read("scores", dev_full_name(run.calib_gen, run.verifier))
     cands = ctx.store.read("candidates", f"{run.calib_gen}__dev")
-    s = s.merge(cands[["question_id", "cand", "text"]], on=["question_id", "cand"])
+    name = dev_full_name(run.calib_gen, run.verifier)
+    if ctx.store.done("scores", name):
+        s = ctx.store.read("scores", name)
+        s = s.merge(cands[["question_id", "cand", "text"]], on=["question_id", "cand"])
+    elif run.recipe in ("random", "generic_len"):
+        # these recipes use only the candidate texts; scores are placeholders
+        s = cands[["question_id", "cand", "text"]].assign(score=0.0)
+    else:
+        raise RuntimeError(f"{name} missing: recipe {run.recipe!r} needs BF16 dev scores")
     qids = sorted(s["question_id"].unique())
     scores, ids = [], []
     for q in qids:
@@ -238,6 +245,13 @@ def execute_run(run: ScoreRun, ctx: RunContext, dev_full: bool = False, stop_aft
                     # extra chunks so the seeded choice of n_calib is non-trivial
                     gids = generic_chunks(tok, ctx.generic_texts, ctx.generic_chunk_tokens, 2 * ctx.n_calib)
                 calib = build_recipe("generic", None, ctx.n_calib, run.seed, generic_texts_ids=gids)
+            elif run.recipe == "generic_len":
+                # length control: generic text with the lengths of the in-domain `random` set
+                ref = build_recipe("random", _pool_from_dev(ctx, run, scorer), ctx.n_calib, run.seed)
+                lengths = [int(x.shape[1]) for x in ref.sequences]
+                gids = generic_chunks(tok, ctx.generic_texts, ctx.generic_chunk_tokens, 2 * ctx.n_calib)
+                calib = build_recipe("generic_len", None, ctx.n_calib, run.seed, generic_texts_ids=gids,
+                                     lengths=lengths)
             else:
                 calib = build_recipe(run.recipe, _pool_from_dev(ctx, run, scorer), ctx.n_calib, run.seed)
             meta["calibration"] = {k: v for k, v in calib.meta.items() if k in ("recipe", "n_tokens", "n_boundary", "n_anchor")}

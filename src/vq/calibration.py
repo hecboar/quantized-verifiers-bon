@@ -10,6 +10,8 @@ checked. Recipes:
   ch           - winner vs closest challenger pairs (smallest winner margins)
                  + random anchors; pairs feed the contrastive Hessian term
   ch_shuffled  - same sequences as `ch`, partners re-matched across questions
+  generic_len  - generic text cut to the token lengths of the `random` recipe
+                 (length control for the in-domain 3-bit calibration, revision 2)
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import torch
 
 from .quant.apply import CalibrationSet
 
-RECIPES = {"generic", "random", "dpq", "ch", "ch_shuffled"}
+RECIPES = {"generic", "random", "dpq", "ch", "ch_shuffled", "generic_len"}
 
 
 @dataclass
@@ -60,6 +62,7 @@ def build_recipe(
     anchor_frac: float = 0.25,
     boundary_frac: float = 0.75,
     generic_texts_ids: list[list[int]] | None = None,
+    lengths: list[int] | None = None,
 ) -> CalibrationSet:
     if recipe not in RECIPES:
         raise ValueError(recipe)
@@ -70,6 +73,21 @@ def build_recipe(
             raise ValueError("generic recipe needs >= n_sequences tokenised text chunks")
         idx = rng.choice(len(generic_texts_ids), n_sequences, replace=False)
         return _finish([_seq(generic_texts_ids[i]) for i in idx], [], {"recipe": recipe})
+
+    if recipe == "generic_len":
+        # generic chunks (shuffled with the seed) concatenated into one stream, then cut
+        # into consecutive pieces with the given token lengths
+        if not generic_texts_ids or not lengths or len(lengths) != n_sequences:
+            raise ValueError("generic_len needs tokenised generic chunks and n_sequences lengths")
+        order = rng.permutation(len(generic_texts_ids))
+        stream = [t for i in order for t in generic_texts_ids[i]]
+        if sum(lengths) > len(stream):
+            raise ValueError(f"generic text too short: {len(stream)} tokens for {sum(lengths)}")
+        seqs, pos = [], 0
+        for n in lengths:
+            seqs.append(_seq(stream[pos:pos + n]))
+            pos += n
+        return _finish(seqs, [], {"recipe": recipe})
 
     if recipe == "random":
         picks = _random_candidates(pool, n_sequences, rng)

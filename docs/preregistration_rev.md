@@ -58,3 +58,24 @@ pods: 12.25 USD (balance 23.96 -> 11.71 USD). Results: `outputs/tables/revision/
 models were re-run from scratch on two pods (the partial shards were archived, not
 resumed, to avoid mixing two quantizations); both completed. Spend 2.34 USD (balance
 11.71 -> 9.37 USD).
+
+# Amendment 6 — revision 2 experiments (exploratory), 2026-10-15
+
+**Status: fixed before launch.** Motivated by a second external review (scope of the
+in-domain 3-bit calibration result). Exploratory, no confirmatory family; every result
+is reported. No score of these runs exists at the time of this commit.
+
+- **B2** `gptq-w3-math` (same definition as B: GPTQ 3 bits, group 128, 128 random
+  development candidates, `random` recipe, seed 0) for **prm-7b** and **tulu-8b** on the
+  main pools (Qwen2.5-1.5B, 2,000 problems). Tulu-3 has no BF16 development scores; the
+  `random` recipe uses only candidate texts, so the dev pool is built from the texts.
+- **B3** length control `gptq-w3-genlen` for **sky-1.7b** on the main pools: GPTQ 3 bits,
+  group 128, calibrated on WikiText-2 text cut into 128 pieces whose token lengths equal
+  those of the sky-1.7b `gptq-w3-math` calibration set (same pool and seed), so it differs
+  from `gptq-w3-math` in domain and format only, and from `gptq-w3` in length only.
+- Estimands: Delta vs BF16 at N = 32 (95% CI), paired difference from the generic
+  `gptq-w3` Delta, answer transitions; for B3 also the paired difference from
+  `gptq-w3-math`.
+- Budget: three pods (any GPU >= 24 GB from the revision list), hard caps 4 h (PRM),
+  3 h (Tulu), 2.5 h (1.7B); expected about 3-4 USD of a 9.37 USD balance. Pods are
+  deleted after each step.
