@@ -105,8 +105,11 @@ def fig_frontier(st):
     for s in ("bf16", "nf4", "gptq-w4"):
         name, col, mk = PREC[s]
         d = df[df.scheme == s]
-        ax.scatter(d.mem, d.acc, color=col, marker=mk, s=38 if s != "nf4" else 26, edgecolor="white",
-                   linewidth=1.2, zorder=4 if s == "nf4" else 3,
+        # NF4 drawn hollow and on top: at 1.7B it sits almost on the packed GPTQ-W4 point
+        hollow = s == "nf4"
+        ax.scatter(d.mem, d.acc, marker=mk, s=58 if hollow else 38,
+                   facecolor="none" if hollow else col, edgecolor=col if hollow else "white",
+                   linewidth=1.3 if hollow else 1.2, zorder=4 if hollow else 3,
                    label=name + (" (packed)" if s == "gptq-w4" else ""))
         for r in d.itertuples():
             lab = "PRM" if r.v == "prm-7b" else r.v.replace("sky-", "").upper()

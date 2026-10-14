@@ -1,21 +1,24 @@
 \section{Conclusion}\label{sec:conclusion}
 
-We asked whether the reward-model verifier in Best-of-$N$ mathematical answer selection
-can be quantized without losing what it is for. On frozen candidate pools, with
-prospectively specified analysis plans, the tested 4-bit GPTQ deployments of verifiers
-with 4B parameters and above kept Best-of-32 accuracy within a $\pm3$\pp\ equivalence
-margin in the main study and in two follow-up studies, and where the verifier beat
-majority vote they kept more than half of that advantage (an estimated 93\% for the
-PRM). Under the tested 6~GiB verifier budget, the 4B ORM with packed 4-bit weights was
-the best tested deployment. Quantization changes the selected candidate often, but the
-selected answer much less often, consistent with answer redundancy in the pools. Three-bit
-GPTQ with generic calibration degrades selection: among the Qwen-based ORMs most for the
-smallest one, and severely for both Llama-based reward models; for the Qwen-based ORMs,
-in-domain calibration recovers most of the loss.
-Two practical caveats travel with these results. Compare a verifier against majority
-vote on one's own generator, because with a strong generator it may add little; and
-evaluate selection with a grader that is robust to answer format, because a strict
-grader can turn format preferences into spurious effects of quantization.
+We evaluated whether reward-model verifiers in Best-of-$N$ mathematical answer selection
+can be quantized without losing selection accuracy or their advantage over majority
+vote. On frozen candidate pools and with analysis plans fixed in advance, the tested
+4-bit GPTQ deployments of verifiers with 4B or more parameters kept Best-of-32 accuracy
+within a $\pm3$\pp\ equivalence margin in the main study and in two follow-up studies.
+Where the verifier beat majority vote, the quantized verifier kept more than half of
+that advantage, an estimated 93\% for the PRM. Under the tested 6~GiB verifier budget,
+the 4B ORM with packed 4-bit weights was the best tested deployment. Quantization often
+changes the selected candidate but changes the selected answer much less often, which is
+consistent with answer redundancy in the pools. Three-bit GPTQ with generic calibration
+degrades selection, most for the smallest Qwen-based ORM and severely for both
+Llama-based reward models. For the two Qwen-based ORMs we tested, in-domain calibration
+recovers most of the loss.
+
+These results carry two practical lessons. First, a verifier should be compared with
+majority vote on the target generator, because with a strong generator it may add
+little. Second, selection should be evaluated with a grader that is robust to answer
+format, because a strict grader can turn format preferences into spurious effects of
+quantization.
 
 \section*{CRediT authorship contribution statement}
 

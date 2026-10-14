@@ -1,77 +1,81 @@
 \section{Discussion}\label{sec:discussion}
 
-\paragraph{Deployment implications} For the tested reward-model verifiers of 4B
-parameters and above, 4-bit weight-only GPTQ preserved Best-of-$N$ accuracy in three
-prospectively planned settings (two generators, three problem sets, an ORM family and
-a PRM), and where the verifier beat majority vote it kept most of that advantage. NF4
-and AWQ behaved similarly in the exploratory grid but were not part of the follow-up
-studies. Two reward models on a Llama backbone also stayed within the margin, but lost
-0.6--1.5\pp\ and changed their selections more often, so the size of the 4-bit effect
-varies between models even when it is small. Under the tested 6~GiB verifier budget and workload, a 4B ORM with packed
-4-bit weights was the best tested deployment, ahead of the best full-precision
-verifier that fit. Three bits was not robust with generic calibration: it cost
-1.3--1.8\pp\ for the larger verifiers in the main study, 2.6--3.5\pp\ in H7, and
-13.2\pp\ for the 1.7B ORM, which was also sensitive to the quantization method at 4 bits
-(RTN versus GPTQ), and 12.6--26.4\pp\ for the two Llama-based reward models. For
-the two Qwen-based ORMs on which it was tested, calibrating on in-domain candidates
-instead of generic text substantially reduced this 3-bit loss in an exploratory test
-(8B ORM: $-0.05$\pp; 1.7B: $-3.75$ instead of $-13.15$\pp), so for them the calibration
-recipe matters as much as the bit width at 3 bits; whether it also rescues the
-Llama-based models was not tested. These conclusions are specific to the tested checkpoints, quantization recipes,
-scoring rule and mathematical tasks.
+\paragraph{Deployment implications} For the tested reward-model verifiers with 4B or
+more parameters, 4-bit weight-only GPTQ preserved Best-of-$N$ accuracy in three
+prospectively planned settings, which covered two generators, three problem sets, an
+ORM family and a PRM. Where the verifier beat majority vote, the quantized verifier kept
+most of that advantage. NF4 and AWQ behaved similarly in the exploratory grid but were
+not part of the follow-up studies. Two reward models on a Llama backbone also stayed
+within the margin. They lost 0.6--1.5\pp\ and changed their selections more often,
+though, so the size of the 4-bit effect varies between models even when it is small.
+Under the tested 6~GiB verifier budget and workload, a 4B ORM with packed 4-bit weights
+was the best tested deployment, ahead of the best full-precision verifier that fit.
 
-\paragraph{Why accuracy is stable when selections change} Quantization perturbs
-verifier scores enough to change the selected candidate on a quarter to a half of
-problems at 4 bits, yet the selected canonical answer changes far less often
-(Table~\ref{tab:transitions}): most changes stay within the same answer cluster, and
-the remaining harms and benefits largely offset each other. This is consistent with
-answer redundancy in the pools: Best-of-$N$ needs the top of the ranking to keep a
-correct answer, not a particular candidate. We have not isolated this mechanism
-causally (for example by manipulating answer multiplicities), nor measured where the
-remaining answer-level changes occur. A testable implication is that quantization
-sensitivity should depend on how closely answers compete within a pool rather than on
-nominal difficulty or on $N$.
+Three-bit GPTQ with generic calibration was not robust. It cost 1.3--1.8\pp\ for the
+larger verifiers in the main study, 2.6--3.5\pp\ in H7, 12.6--26.4\pp\ for the two
+Llama-based reward models and 13.2\pp\ for the 1.7B ORM, which was also sensitive to the
+choice between RTN and GPTQ at 4 bits. In an exploratory test on two Qwen-based ORMs,
+calibrating on in-domain candidates instead of generic text substantially reduced this
+loss, to $-0.05$\pp\ for the 8B ORM and from $-13.15$ to $-3.75$\pp\ for the 1.7B ORM.
+For these two models the calibration recipe matters as much as the bit width at 3 bits.
+We did not test whether in-domain calibration also helps the PRM or the Llama-based
+models, and the test does not tell which property of the recipe is responsible. All of
+these conclusions are specific to the tested checkpoints, quantization recipes, scoring
+rule and mathematical tasks.
 
-\paragraph{How much a verifier is worth} Asking whether quantization destroys the
-value a verifier adds presupposes that the verifier adds value. With the main
-generator the Skywork ORMs were between $-0.3$ and $+1.4$\pp\ from majority vote in BF16; with a
-strong math generator on hard problems majority vote matched the PRM and beat the ORM;
-only in the regime selected for verifier advantage (H7) did both verifiers clearly beat
-majority vote. Aggregation rules that combine answer frequency and reward scores can
-change this comparison \cite{kuang2025aggregation}; our weighted-vote control shows the
-same robustness to quantization under such a rule. Practitioners should compare a
-verifier against self-consistency on their own generator before paying its memory and
-latency cost.
+\paragraph{Why accuracy is stable when selections change} At 4 bits quantization
+perturbs verifier scores enough to change the selected candidate on a quarter to a half
+of problems, yet the selected canonical answer changes far less often
+(Table~\ref{tab:transitions}). Most changes stay within the same answer cluster, and the
+remaining harms and benefits largely cancel. This is consistent with answer redundancy
+in the pools. For Best-of-$N$ to stay correct, the top of the ranking has to keep a
+correct answer, and any of the candidates that carry it will do. We have not isolated
+this mechanism causally, for example by manipulating answer multiplicities, and we have
+not measured where the remaining answer-level changes occur. A testable implication is
+that quantization sensitivity depends on how closely answers compete within a pool more
+than on nominal difficulty or on $N$.
 
-\paragraph{Evaluating selection} Three practices changed our conclusions or their size.
-(i) A strict answer grader turned a reward-model preference for prose answers into
-apparent quantization ``gains'' of up to 8\pp; a format/content decomposition and a
-lenient grader substantially reduced them, and a blinded human audit of the
-unparseable winners reduced the prespecified memory-budget effect from 2.25 to 1.4\pp. (ii) A fixed-precision
-null control (same weights, different batch layout) changes 5--15\% of selected
-candidates across our studies; winner-change rates without such a reference overstate
-instability. (iii) Development-set signals that motivated two prespecified hypotheses did
-not replicate on 1,200 evaluation problems; prespecifying them made the non-replication
-visible.
+\paragraph{How much a verifier is worth} Testing whether quantization preserves a
+verifier's advantage over majority vote requires a setting where the full-precision
+verifier has one. With the main generator, the BF16 Skywork ORMs were within $-0.3$ to
+$+1.4$\pp\ of majority vote. With the strong math generator on hard problems (H6),
+majority vote matched the PRM and beat the 8B ORM. Both verifiers clearly beat majority
+vote only in H7, the regime we had selected for verifier advantage. Aggregation rules
+that combine answer frequency and reward scores can change this comparison
+\cite{kuang2025aggregation}, and our weighted-vote control shows the same robustness to
+quantization under such a rule. Practitioners should compare a verifier with
+self-consistency on their own generator before paying its memory and latency cost.
 
-\paragraph{Limitations} The main-study ORMs come from a single family (Skywork-Reward-V2,
-built on Qwen3), the PRM is a Qwen model and the generators are Qwen and Llama models;
-the two additional Llama-based reward models address the backbone and training-family
-question only in an exploratory way, and neither added value over majority vote, so
-value retention outside the Qwen-based verifiers is untested. Accuracy experiments use simulated quantization; packed 4-bit
-kernels agreed with it on 98.8--99.2\% of selected answers, and memory was measured for
-one scoring workload without the generator. The confirmatory GPTQ results use generic calibration with a
-single calibration draw; in-domain calibration was tested only at 3 bits and for two
-verifiers. The tasks are GSM8K and MATH, whose test problems may have been
-seen during pre-training of the generators and verifiers; because BF16 and quantized
-verifiers score the same frozen pools, exposure is shared by design, but it may alter
-pool redundancy and verifier advantage and could interact with quantization.
-Candidates were capped at 1,024 or 2,048 tokens and 6.5--19\% reached the cap, although
-excluding them changes no conclusion. The human audit was performed by a single rater
-on all unparseable winners plus 30 parseable controls, and its corrected estimate treats the labels as
-error-free. The value-retention result is confirmatory for the PRM and only narrowly
-so for the ORM, and it holds in a regime chosen with prior knowledge; we did not find a
-strong-generator regime in which the verifiers clearly beat majority vote. Finally, the
-analysis plans were fixed in version control without an external registry, and the
-main-study plan was amended after candidate generation but before any verifier
+\paragraph{Evaluating selection} Three practices changed our conclusions or the size of
+our estimates. First, a strict answer grader turned a reward-model preference for prose
+answers into apparent quantization ``gains'' of up to 8\pp. A format/content
+decomposition and a lenient grader substantially reduced these gains, and a blinded
+human audit of the winners without an extractable answer reduced the prespecified
+memory-budget effect from 2.25 to 1.4\pp. Second, a fixed-precision null control (same
+weights, different batch layout) changes 5--15\% of selected candidates across our
+studies, so winner-change rates without such a reference overstate instability. Third,
+two development-set signals that motivated prespecified hypotheses did not replicate on
+1,200 evaluation problems, and prespecifying them made the non-replication visible.
+
+\paragraph{Limitations} The main-study ORMs come from a single family
+(Skywork-Reward-V2 on Qwen3), the PRM is also Qwen-based, and the generators are Qwen and
+Llama models. The two additional Llama-based reward models vary the backbone and the
+training family only in exploratory runs. Neither beat majority vote in BF16, so value
+retention is untested outside the Qwen-based verifiers. Accuracy experiments use
+simulated quantization. Packed 4-bit kernels agreed with it on 98.8--99.2\% of selected
+answers, and memory and throughput were measured for one scoring workload without the
+generator. The confirmatory GPTQ results use generic calibration with a single
+calibration draw, and in-domain calibration was tested only at 3 bits and for two
+verifiers. The tasks are GSM8K and MATH, whose test problems may have been seen during
+pre-training of the generators and verifiers. Because BF16 and quantized verifiers
+score the same frozen pools, any exposure is shared by design, but it may alter pool
+redundancy and verifier advantage and could interact with quantization. Candidates were
+capped at 1,024 or 2,048 tokens and 6.5--19\% reached the cap, although excluding them
+changes no conclusion. The human audit was done by a single rater on all winners without
+an extractable answer plus 30 controls with one, and its corrected estimate treats the
+labels as error-free. The value-retention result is confirmatory for the PRM and only
+narrowly so for the ORM, and it holds in a regime chosen with prior knowledge. We did
+not find a strong-generator regime in which the verifiers clearly beat majority vote.
+Finally, the analysis plans were fixed in version control without an external registry,
+and the main-study plan was amended after candidate generation but before any verifier
 scoring.
