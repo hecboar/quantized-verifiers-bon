@@ -280,8 +280,18 @@ H7 are separately planned studies on new problems.}\label{fig:retention}
 
 \subsection{Robustness and controls}\label{sec:robustness}
 
-\paragraph{Other reward-model families} \todo{A1/A2: Skywork-V2-Llama-3.1-8B and
-Tulu-3-8B-RM, main and H7.}
+\paragraph{Other reward-model families} Two further ORMs on a Llama~3.1 backbone were
+evaluated on the main and H7 pools (exploratory). The 4-bit result holds within the
+$\pm3$\pp\ margin, but with somewhat larger losses than for the Skywork-Qwen models.
+For Llama-3.1-Tulu-3-8B-RM, GPTQ-W4 changes $A_{32}$ by $-0.60$\pp\ $[-1.65, +0.45]$ on
+the main problems and $-0.75$\pp\ $[-2.45, +0.85]$ on H7; for
+Skywork-Reward-V2-Llama-3.1-8B by $-1.45$\pp\ $[-2.75, -0.15]$ and $-1.23$\pp\
+$[-3.11, +0.66]$. All four 90\% intervals lie inside $\pm3$\pp, but the Skywork-Llama
+main-study loss is distinguishable from zero. Both models changed the selected candidate
+(44--53\%) and the selected answer (11--24\%) more often than the Skywork-Qwen ORMs.
+Neither beat majority vote in BF16 (Tulu: $+0.35$\pp\ on the main problems, $-0.94$\pp\
+on H7; Skywork-Llama: $-3.35$ and $-2.17$\pp), so their value retention cannot be
+assessed. \todo{GPTQ-W3 for these models, if the runs completed.}
 
 \paragraph{Task-matched calibration at 3 bits} Much of the 3-bit loss comes from the
 generic calibration data (exploratory). Calibrating GPTQ-W3 on 128 candidates sampled
