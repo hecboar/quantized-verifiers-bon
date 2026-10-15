@@ -45,9 +45,9 @@ precision is close to optimal \cite{dettmers2022the}, and large evaluations find
 well-calibrated 4- and 8-bit models track their full-precision versions
 \cite{kurtic2024give}. The topic is also active in this journal
 \cite{zhu2027rotsq,bang2027bvsr}. The choice of calibration data matters as well:
-Doubt-Preserving Quantization (DPQ) selects calibration examples near the
-full-precision model's decision boundary in order to preserve its uncertainty
-\cite{yang2026dpq}. For reasoning, quantizing the \emph{generator} hurts more at 3 bits
+Doubt-Preserving Quantization (DPQ) builds calibration sets that mix examples on which
+the full-precision model is uncertain with generic anchor text, in order to preserve its
+confidence and decision margins \cite{yang2026dpq}. For reasoning, quantizing the \emph{generator} hurts more at 3 bits
 and on harder problems \cite{liu2025quantization,li2025quantization}. Aggregate
 accuracy can also hide many changed outputs, since compressed models can keep their
 accuracy while flipping a sizeable share of individual answers

@@ -36,16 +36,15 @@ this paper use repaired buffers, and the affected scores were discarded (a recor
 deviation).
 
 \paragraph{Software and compute} Generation used vLLM 0.30.0. Scoring used PyTorch
-2.13.0 (CUDA 13.0) with \texttt{transformers} 5.17 in the main study and 5.19 in the
-follow-up studies, and the packed kernels used \texttt{gptqmodel}. Model identifiers and
+2.13.0 (CUDA 13.0) with \texttt{transformers} 5.17 in the main study and 5.19 in H6 and H7, and the packed kernels used \texttt{gptqmodel}. Model identifiers and
 all settings are recorded in the repository and in the metadata of every score file.
-All experiments ran on single cloud GPUs, mostly RTX 4090, with some follow-up runs on
+All experiments ran on single cloud GPUs, mostly RTX 4090, with some H6 and H7 runs on
 L40S and other GPUs with at least 24~GB. The BF16 and quantized runs of a verifier
 always used the same GPU. The total was roughly 90 GPU-hours, including setup.
 
 \section{Blinded audit of the outcome measure}\label{app:audit}
 
-A human rater (one of the authors) inspected all 94 distinct Best-of-32 winners without
+A human rater (the first author) inspected all 94 distinct Best-of-32 winners without
 an extractable final answer in either arm of the memory-budget contrast c2 (48 from the
 4B GPTQ-W4 arm and 68 from the 1.7B BF16 arm, with 22 shared), together with 30 randomly
 sampled winners that had an extractable answer. Each item showed only the problem, the
@@ -84,7 +83,7 @@ included the packed 1.7B model in the memory frontier. In H6 the first candidate
 was lost before inspection and regenerated, and scoring was split across four GPUs. In
 H7, GPUs other than the RTX 4090 had to be used because of limited availability, and the
 lenient-grader verdicts were computed with time limits equivalent to those on Linux. The
-corrections to the follow-up analysis script were made before H7 data existed and
+corrections to the H6/H7 analysis script were made before H7 data existed and
 reproduce all H6 results exactly. The exploratory revision experiments (additional
 reward models, task-matched 3-bit calibration, and the memory and throughput
 re-measurement), and the second set (in-domain 3-bit calibration for the PRM and Tulu-3,

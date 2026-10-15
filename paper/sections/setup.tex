@@ -7,23 +7,29 @@ repository, and Table~\ref{tab:chronology} in \ref{app:deviations} gives the chr
 For the main study, the initial plan and its first amendment preceded the generation of
 the evaluation candidates. The final amendment came after we had inspected
 generator-side statistics (accuracy, share of extractable answers, truncation) and
-before any verifier scored an evaluation problem. The plans of the two follow-up
-studies, with their problem manifests and analysis code, were fixed before their
+before any verifier scored an evaluation problem. The plans of the two further studies, H6 and H7, with their problem manifests and
+analysis code, were fixed before their
 candidates were generated. Because we did not use an external registry, the commit
 history is the timestamped record of each plan. The hypotheses are labelled c1--c5 in
-the main study and H6a/b and H7a/b in the follow-up studies. Every result outside these
+the main study, H6a/b in H6 and H7a/b in H7. Every result outside these
 tests is exploratory and labelled as such.
 
 \subsection{Problems and candidate pools}\label{sec:pools}
 
-Table~\ref{tab:populations} lists the populations. The main evaluation set has 2,000
-problems: 800 from the GSM8K test split \cite{cobbe2021gsm8k}, 400 sampled from MATH500
+Table~\ref{tab:populations} lists the five evaluation populations, and each row is
+used as follows. \emph{Main, full} is the main evaluation set of 2,000 problems: 800 from
+the GSM8K test split \cite{cobbe2021gsm8k}, 400 sampled from MATH500
 \cite{lightman2023verify}, and 800 further MATH test problems \cite{hendrycks2021math}
-outside MATH500, sampled with a fixed seed. The first 1,200 (GSM8K and MATH500) form the
-original manifest. It was frozen before the MATH extension was added and is the
-prespecified population of c1. A development set of 400 problems (200 GSM8K train, 200
-MATH train) was used only for the go/no-go gate and for the choices assigned to
-development data.
+outside MATH500, sampled with a fixed seed. It is used for the memory comparison c2 and
+for the exploratory grid. \emph{Main, original manifest} is its first 1,200 problems
+(GSM8K and MATH500). This subset was frozen before the 800 extra MATH problems were added,
+and it is the prespecified population of c1. \emph{Main, MATH} contains the 1,200 MATH
+problems of the main set (MATH500 and the extension) and is used for c4 and c5.
+\emph{H6} (800 MATH Level-5 test problems) and \emph{H7} (1,060 MATH Level-4 and
+Level-5 test problems) are the populations of the two further studies; none of their
+problems appears anywhere else in this work. A separate development set of 400 problems
+(200 GSM8K train, 200 MATH train) was used only for the go/no-go gate and for the choices
+assigned to development data.
 
 \begin{table}[!htb]
 \centering
@@ -59,9 +65,10 @@ length limit. A secondary generator, Llama-3.2-3B-Instruct, produces pools for a
 
 The main study uses three outcome reward models (ORMs) from one family,
 Skywork-Reward-V2-Qwen3 at 1.7B, 4B and 8B parameters \cite{skywork2025v2}, and one
-process reward model (PRM), Qwen2.5-Math-PRM-7B \cite{zhang2025prm}. We chose the
-Skywork family because it provides three sizes on one backbone with one training recipe,
-which lets us compare size and precision within a family. The Skywork models are
+process reward model (PRM), Qwen2.5-Math-PRM-7B \cite{zhang2025prm}. We chose the Skywork family because it provides several sizes on one backbone, all
+trained on the same curated preference data \cite{skywork2025v2}, which lets us compare
+size and precision within a family, and because they reported state-of-the-art results on seven reward-model benchmarks at
+release. The Skywork models are
 general preference reward models, trained on broad human-preference data rather than
 on mathematical correctness. We use them as outcome verifiers by scoring the full
 (problem, response) pair with their scalar head. The PRM, by contrast, is trained for
@@ -87,14 +94,21 @@ size 128, calibrated on 128 WikiText-2 sequences of 512 tokens (generic calibrat
 \textbf{RTN-W4} and \textbf{RTN-W8} for an exploratory dose-response.
 \end{itemize}
 Accuracy experiments use simulated (``fake'') quantization, in which weights are
-quantized and dequantized back to BF16 so that only the rounding changes. For the memory
+quantized and then dequantized back to BF16. The scores then differ from BF16 only by the
+rounding of the weights, so every method and bit width runs on the same kernels and the
+comparison is not mixed with kernel-specific numerics. Simulation also covers conditions
+that have no packed deployment here (GPTQ-W3, AWQ, RTN and the PRM). We check that it
+represents real deployment by comparing it with packed GPTQ-W4 kernels
+(Section~\ref{sec:robustness}). For the memory
 study, the GPTQ-W4 ORMs are exported and run with packed 4-bit kernels
 (\texttt{gptqmodel}, Marlin). The PRM has no packed GPTQ deployment because the export
 does not support its remote modelling code, so its deployed 4-bit condition is NF4.
-Every quantized model is audited: all target layers must change and no other parameter
-may change.
+Every quantized model is audited: every target layer must differ from BF16 and every
+other parameter must stay bit-identical.
 
-Verifier memory is the peak allocated GPU memory, in GiB ($2^{30}$ bytes), while
+Verifier memory is the peak allocated GPU memory, reported in GiB ($2^{30}$ bytes; 1~GiB
+$\approx$ 1.074~GB, where 1~GB = $10^9$ bytes). GB appears only where a source states
+it, such as GPU specifications. Memory is measured while
 scoring a fixed workload of 64 sequences of 900 tokens on an RTX 4090 with no generator
 resident.
 
@@ -110,7 +124,8 @@ without an extractable answer do not vote, and a pool with no extractable answer
 as incorrect. The most frequent cluster wins, with ties broken in favour of the cluster
 that appears first in candidate order, and the vote is correct if the winning cluster
 contains a correct candidate. Majority vote therefore does not depend on the verifier.
-The oracle (pass@32) is correct if any candidate is.
+The oracle (pass@32) counts a problem as solved if at least one of its 32 candidates is
+correct. It is the upper bound for any rule that selects one candidate from the pool.
 
 \subsection{Grading}\label{sec:grading}
 
@@ -132,13 +147,14 @@ content term, $\Delta = (p_1 - p_0)\,a_0 + p_1\,(a_1 - a_0)$.
 \subsection{Metrics and controls}\label{sec:metrics}
 
 For verifier $v$ and condition $c$, $A_N$ is Best-of-$N$ accuracy and
-$\Delta_N = A_N^{c} - A_N^{\mathrm{BF16}}$, computed per problem and averaged. At
-$N=32$ we also report answer transitions relative to BF16. These are the shares of
-problems whose selected candidate changes, whose selected canonical answer changes,
-whose correct BF16 selection becomes wrong (harm), and whose wrong BF16 selection
-becomes correct (benefit), so that $\Delta_{32}$ equals benefit minus harm. Two controls
-measure numerical sensitivity. \emph{bf16-null} rescores in BF16 with a different batch
-layout, and \emph{bf16-repeat} rescores with the same layout. The repeat is
+$\Delta_N = A_N^{c} - A_N^{\mathrm{BF16}}$, computed per problem and averaged. At $N=32$ we also compare each quantized selection with the BF16 selection of the
+same problem and report four shares of problems: the selected candidate changes; the
+selected canonical answer changes; a correct BF16 selection becomes wrong (harm); and a
+wrong BF16 selection becomes correct (benefit). $\Delta_{32}$ equals benefit minus
+harm. Two controls measure how much the selection moves without any quantization.
+\emph{bf16-null} rescores in BF16 with a different batch layout, which changes padding
+and the order of floating-point operations and hence perturbs scores slightly.
+\emph{bf16-repeat} rescores with the same layout. The repeat is
 bit-identical. The null control changes the selected candidate on 7--11\% of
 main-study problems with $|\Delta_{32}| \le 0.3$\pp, and on 10.9\% and 15.0\% (H6) and
 5.5\% and 8.7\% (H7) of problems for the ORM and the PRM.

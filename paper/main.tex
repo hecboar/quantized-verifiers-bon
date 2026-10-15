@@ -41,10 +41,10 @@ generator for accelerator memory. We evaluate post-training weight quantization 
 verifiers on frozen pools of 32 solutions per problem from GSM8K and MATH, using three
 outcome reward models (1.7B--8B) from one family and a 7B process reward model (PRM),
 with GPTQ, AWQ, NF4 and round-to-nearest. Analysis plans were fixed in version control
-before verifier scoring, and for two follow-up studies before candidate generation. On
+before verifier scoring, and for two further studies before candidate generation. On
 its prespecified 1,200-problem population, the 8B GPTQ-W4 contrast meets a $\pm3$-point
 equivalence bound for Best-of-32 accuracy (difference $+0.33$; 90\% interval $-0.58$ to
-$+1.25$). Two follow-up studies on unused MATH problems support GPTQ-W4 equivalence for
+$+1.25$). Both further studies, on unused MATH problems, support GPTQ-W4 equivalence for
 the 8B outcome verifier and the PRM. Where both verifiers beat majority vote, the PRM
 retains an estimated 93\% of its 8.2-point advantage and passes the prespecified
 half-retention test. With a stronger generator, neither verifier clearly beat majority
@@ -60,8 +60,8 @@ compressed verifiers need format-robust grading and a majority-vote baseline.
 \end{abstract}
 
 \begin{keyword}
-post-training quantization \sep reward models \sep Best-of-N \sep test-time compute
-\sep mathematical reasoning \sep prespecified analysis
+post-training quantization \sep reward models \sep process reward models \sep Best-of-N
+selection \sep GPTQ \sep majority voting \sep equivalence testing
 \end{keyword}
 
 \end{frontmatter}

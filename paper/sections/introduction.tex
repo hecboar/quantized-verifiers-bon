@@ -24,21 +24,20 @@ advance. Each pool of 32 candidates per problem is generated once, so every veri
 precision ranks exactly the same responses, and any difference in accuracy comes from
 the verifier. We evaluate three ORM sizes and one PRM in BF16, NF4, GPTQ (4 and 3 bits),
 AWQ and round-to-nearest on 2,000 GSM8K and MATH problems, and we measure verifier memory
-with packed 4-bit kernels. Two follow-up studies, one with a stronger generator and one
-with new hard problems, had their plans fixed before their candidates were generated.
+with packed 4-bit kernels. Two further studies, H6 with a stronger generator and H7 with new hard problems, had
+their plans fixed before their candidates were generated.
 
 Our contributions are as follows.
 \begin{enumerate}
 \item \textbf{Accuracy equivalence at 4 bits.} GPTQ-W4 meets a prespecified $\pm3$\pp\
 equivalence bound for the Best-of-32 accuracy of an 8B ORM (90\% interval $[-0.58,
-+1.25]$), and the result holds for both an ORM and a PRM in two follow-up studies.
++1.25]$), and the result holds for both an ORM and a PRM in H6 and H7.
 Three-bit GPTQ with generic calibration degrades selection, most severely for the
 smallest Qwen-based verifier and for two Llama-based reward models. In exploratory
 tests, calibrating on in-domain candidates reduced the loss from 13.2 to 3.8\pp\ for the
 1.7B ORM and from 12.6 to 2.8\pp\ for a Llama-based ORM, while a length-matched generic
 control did not help.
-\item \textbf{Retained verifier value.} In a follow-up study on 1,060 new hard problems
-where both verifiers beat majority vote, a prespecified test shows that 4-bit
+\item \textbf{Retained verifier value.} In H7, on 1,060 new hard problems where both verifiers beat majority vote, a prespecified test shows that 4-bit
 quantization keeps more than half of their advantage. The PRM retains an estimated 93\%
 of an 8.2\pp\ advantage and the ORM 91\% of a 3.0\pp\ advantage, the latter narrowly
 significant. With a strong generator, neither verifier clearly beat majority vote.

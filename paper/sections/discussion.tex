@@ -5,7 +5,7 @@ more parameters, 4-bit weight-only GPTQ preserved Best-of-$N$ accuracy in three
 prospectively planned settings, which covered two generators, three problem sets, an
 ORM family and a PRM. Where the verifier beat majority vote, the quantized verifier kept
 most of that advantage. NF4 and AWQ behaved similarly in the exploratory grid but were
-not part of the follow-up studies. Two reward models on a Llama backbone also stayed
+not part of H6 and H7. Two reward models on a Llama backbone also stayed
 within the margin. They lost 0.6--1.5\pp\ and changed their selections more often,
 though, so the size of the 4-bit effect varies between models even when it is small.
 Under the tested 6~GiB verifier budget and workload, a 4B ORM with packed 4-bit weights
@@ -53,11 +53,16 @@ our estimates. First, a strict answer grader turned a reward-model preference fo
 answers into apparent quantization ``gains'' of up to 8\pp. A format/content
 decomposition and a lenient grader substantially reduced these gains, and a blinded
 human audit of the winners without an extractable answer reduced the prespecified
-memory-budget effect from 2.25 to 1.4\pp. Second, a fixed-precision null control (same
-weights, different batch layout) changes 5--15\% of selected candidates across our
-studies, so winner-change rates without such a reference overstate instability. Third,
-two development-set signals that motivated prespecified hypotheses did not replicate on
-1,200 evaluation problems, and prespecifying them made the non-replication visible.
+memory-budget effect from 2.25 to 1.4\pp. Second, the selected candidate changes even without
+quantization. Rescoring the same BF16 weights with a different batch layout changes
+5--15\% of selected candidates across our studies, because small numerical differences
+are enough to reorder near-tied candidates. A winner-change rate is therefore only
+informative next to such a baseline: without it, quantization would look more
+disruptive than it is. Third, two effects seen on development problems (larger
+damage on MATH and damage growing with $N$) did not replicate on 1,200 evaluation
+problems. Because we had stated them as hypotheses before the evaluation, this
+non-replication is reported as such instead of being lost among exploratory
+results.
 
 \paragraph{Limitations} The main-study ORMs come from a single family
 (Skywork-Reward-V2 on Qwen3), the PRM is also Qwen-based, and the generators are Qwen and
@@ -73,9 +78,9 @@ pre-training of the generators and verifiers. Because BF16 and quantized verifie
 score the same frozen pools, any exposure is shared by design, but it may alter pool
 redundancy and verifier advantage and could interact with quantization. Candidates were
 capped at 1,024 or 2,048 tokens and 6.5--19\% reached the cap, although excluding them
-changes no conclusion. The human audit was done by a single rater on all winners without
-an extractable answer plus 30 controls with one, and its corrected estimate treats the
-labels as error-free. The value-retention result is confirmatory for the PRM and only
+changes no conclusion. The human audit covered all winners without an extractable answer plus 30 controls
+with one, and it was done by one rater, so inter-rater agreement could not be measured
+and the audit-corrected estimate does not include rater uncertainty. The value-retention result is confirmatory for the PRM and only
 narrowly so for the ORM, and it holds in a regime chosen with prior knowledge. We did
 not find a strong-generator regime in which the verifiers clearly beat majority vote.
 Finally, the analysis plans were fixed in version control without an external registry,
