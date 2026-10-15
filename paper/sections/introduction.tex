@@ -33,8 +33,10 @@ Our contributions are as follows.
 equivalence bound for the Best-of-32 accuracy of an 8B ORM (90\% interval $[-0.58,
 +1.25]$), and the result holds for both an ORM and a PRM in two follow-up studies.
 Three-bit GPTQ with generic calibration degrades selection, most severely for the
-smallest Qwen-based verifier and for two Llama-based reward models. In an exploratory
-test, calibrating on in-domain candidates reduced the 1.7B loss from 13.2 to 3.8\pp.
+smallest Qwen-based verifier and for two Llama-based reward models. In exploratory
+tests, calibrating on in-domain candidates reduced the loss from 13.2 to 3.8\pp\ for the
+1.7B ORM and from 12.6 to 2.8\pp\ for a Llama-based ORM, while a length-matched generic
+control did not help.
 \item \textbf{Retained verifier value.} In a follow-up study on 1,060 new hard problems
 where both verifiers beat majority vote, a prespecified test shows that 4-bit
 quantization keeps more than half of their advantage. The PRM retains an estimated 93\%

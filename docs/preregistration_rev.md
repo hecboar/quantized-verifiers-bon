@@ -79,3 +79,23 @@ is reported. No score of these runs exists at the time of this commit.
 - Budget: three pods (any GPU >= 24 GB from the revision list), hard caps 4 h (PRM),
   3 h (Tulu), 2.5 h (1.7B); expected about 3-4 USD of a 9.37 USD balance. Pods are
   deleted after each step.
+
+## Execution record, amendment 6 (2026-10-15)
+
+All three pods completed (exit code 0) and were deleted. Spend 3.06 USD (balance
+9.37 -> 6.31 USD). The Tulu-3 pod scored the BF16 development pools first (standard
+`score` behaviour), so its `random` calibration set was built with real dev scores in
+the pool; the recipe uses only candidate texts, so this does not change the set.
+Quantization audits passed (all target layers changed, nothing else). Calibration sets:
+65,729 tokens (sky-1.7b, both `gptq-w3-math` and `gptq-w3-genlen`, identical lengths),
+68,617 (prm-7b), 62,353 (tulu-8b); i.e. about 490-540 tokens per sequence, close to the
+512 tokens of each WikiText chunk (the manuscript's earlier "about 380" was wrong and is
+corrected).
+
+Results (Delta at N = 32 vs BF16, 95% CI; `outputs/tables/revision/runs_B.csv`):
+- prm-7b: generic -1.30 [-2.30, -0.25]; in-domain -0.60 [-1.45, +0.25]; difference
+  +0.70 [-0.35, +1.75].
+- tulu-8b: generic -12.60 [-14.40, -10.75]; in-domain -2.80 [-4.00, -1.65]; difference
+  +9.80 [+7.95, +11.60].
+- sky-1.7b length control: genlen -16.75 [-18.75, -14.80]; genlen - generic -3.60
+  [-5.60, -1.60]; in-domain - genlen +13.00 [+11.00, +14.95].

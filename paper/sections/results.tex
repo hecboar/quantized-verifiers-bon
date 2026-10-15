@@ -357,8 +357,9 @@ selected answer (11--25\%) more often than the Skywork-Qwen ORMs. Neither showed
 advantage $G$ over majority vote in BF16, so value retention cannot be interpreted for
 them. With generic calibration at 3 bits, both Llama-based models break down. GPTQ-W3
 costs Tulu-3 $12.6$\pp\ and Skywork-Llama $26.4$\pp, which puts the latter below the
-random-candidate rate, against $1.6$\pp\ for the Qwen-based 8B ORM. The 3-bit behaviour
-is therefore strongly model-dependent.
+random-candidate rate, against $1.6$\pp\ for the Qwen-based 8B ORM. With generic
+calibration the 3-bit behaviour is therefore strongly model-dependent; for Tulu-3,
+in-domain calibration recovers most of the loss (next paragraph).
 
 \begin{table}[!htb]
 \centering
@@ -383,20 +384,44 @@ Skywork-Llama-8B & main (2,000) & 68.8 & $-1.45$ [$-2.75$, $-0.15$] & [$-2.55$, 
 \end{tabular}}
 \end{table}
 
-\paragraph{Task-matched calibration at 3 bits} For the two Qwen-based ORMs we tested on
-the main population, much of the 3-bit loss depends on the calibration recipe
-(exploratory; the PRM and the Llama-based models were not re-quantized). The
-prespecified recipe uses 128 WikiText chunks of exactly 512 tokens. The alternative uses
-128 complete candidate responses sampled from the generator's development pools, in the
-verifier's input format and of variable length (about 380 tokens on average), so the
-two recipes differ in domain, format and sequence length at once. With the in-domain
-recipe, $\Delta_{32}$ changes from $-13.15$ to $-3.75$\pp\ $[-5.25, -2.30]$ for the
-1.7B ORM, a recovery of $+9.4$\pp\ $[+7.6, +11.3]$, and from $-1.60$ to $-0.05$\pp\
-$[-1.00, +0.90]$ for the 8B ORM ($+1.55$\pp\ $[+0.40, +2.75]$). The calibration
-problems are development problems, disjoint from the evaluation set. For these two
-models, then, the 3-bit boundary we observe depends on the recipe as well as on the bit
-width. The test does not separate domain, format and length, and it does not show
-whether the PRM or the Llama-based models would recover in the same way.
+\paragraph{Task-matched calibration at 3 bits} Much of the 3-bit loss depends on the
+calibration data (exploratory; Table~\ref{tab:calib}). The prespecified recipe uses 128
+WikiText chunks of exactly 512 tokens. The in-domain alternative uses 128 complete
+candidate responses sampled from the generator's development pools, in the verifier's
+input format and of variable length (about 490--540 tokens on average, depending on the
+tokenizer). The calibration problems are development problems, disjoint from the
+evaluation set. With the in-domain recipe, the loss of the 1.7B ORM falls from
+$13.15$ to $3.75$\pp, and that of Tulu-3, a Llama-based ORM, from $12.60$ to $2.80$\pp.
+The recoveries are $+9.40$\pp\ and $+9.80$\pp. For the verifiers that lost little with
+generic calibration the change is smaller: $+1.55$\pp\ for the 8B ORM and $+0.70$\pp\
+$[-0.35, +1.75]$ for the PRM, whose interval includes zero. A length control rules out
+sequence length as the explanation. Calibrating the 1.7B ORM on WikiText cut to exactly
+the token lengths of its in-domain set gives $\Delta_{32} = -16.75$\pp, no better than
+the generic recipe and $13.00$\pp\ $[11.00, 14.95]$ worse than in-domain calibration.
+The recovery therefore comes from the content of the calibration text, its domain or
+its format, which this design does not separate. For the tested verifiers, the 3-bit
+boundary we observe depends on the calibration recipe as well as on the bit width.
+Skywork-Llama was not re-quantized with the in-domain recipe.
+
+\begin{table}[!htb]
+\centering
+\small
+\caption{GPTQ-W3 with generic and in-domain calibration (exploratory, main study, 2,000
+problems, Best-of-32). $\Delta_{32}$ versus BF16 and the paired difference, in pp with
+95\% intervals. Length control for the 1.7B ORM: WikiText cut to the token lengths of
+its in-domain set, $\Delta_{32} = -16.75$ $[-18.75, -14.80]$.}\label{tab:calib}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrr}
+\toprule
+verifier & BF16 $A_{32}$ (\%) & generic $\Delta_{32}$ & in-domain $\Delta_{32}$ & in-domain $-$ generic \\
+\midrule
+Skywork-1.7B & 71.8 & $-13.15$ [$-15.05$, $-11.25$] & $-3.75$ [$-5.25$, $-2.30$] & $+9.40$ [$+7.55$, $+11.30$] \\
+Skywork-8B & 72.9 & $-1.60$ [$-2.75$, $-0.45$] & $-0.05$ [$-1.00$, $+0.90$] & $+1.55$ [$+0.40$, $+2.75$] \\
+PRM-7B & 76.6 & $-1.30$ [$-2.30$, $-0.25$] & $-0.60$ [$-1.45$, $+0.25$] & $+0.70$ [$-0.35$, $+1.75$] \\
+Tulu-3-8B-RM & 72.5 & $-12.60$ [$-14.40$, $-10.75$] & $-2.80$ [$-4.00$, $-1.65$] & $+9.80$ [$+7.95$, $+11.60$] \\
+\bottomrule
+\end{tabular}}
+\end{table}
 
 \paragraph{Selection rules} The 4-bit result does not depend on the selection rule
 (exploratory, main study, $N=32$). In the reward-weighted answer vote each candidate

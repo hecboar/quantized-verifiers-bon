@@ -11,8 +11,9 @@ the 4B ORM with packed 4-bit weights was the best tested deployment. Quantizatio
 changes the selected candidate but changes the selected answer much less often, which is
 consistent with answer redundancy in the pools. Three-bit GPTQ with generic calibration
 degrades selection, most for the smallest Qwen-based ORM and severely for both
-Llama-based reward models. For the two Qwen-based ORMs we tested, in-domain calibration
-recovers most of the loss.
+Llama-based reward models. Calibrating on in-domain candidates recovers most of the
+loss for both verifiers that failed among those we re-quantized (the 1.7B ORM and
+Tulu-3), and a length-matched generic control does not.
 
 These results carry two practical lessons. First, a verifier should be compared with
 majority vote on the target generator, because with a strong generator it may add

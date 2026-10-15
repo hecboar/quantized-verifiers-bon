@@ -14,12 +14,14 @@ was the best tested deployment, ahead of the best full-precision verifier that f
 Three-bit GPTQ with generic calibration was not robust. It cost 1.3--1.8\pp\ for the
 larger verifiers in the main study, 2.6--3.5\pp\ in H7, 12.6--26.4\pp\ for the two
 Llama-based reward models and 13.2\pp\ for the 1.7B ORM, which was also sensitive to the
-choice between RTN and GPTQ at 4 bits. In an exploratory test on two Qwen-based ORMs,
-calibrating on in-domain candidates instead of generic text substantially reduced this
-loss, to $-0.05$\pp\ for the 8B ORM and from $-13.15$ to $-3.75$\pp\ for the 1.7B ORM.
-For these two models the calibration recipe matters as much as the bit width at 3 bits.
-We did not test whether in-domain calibration also helps the PRM or the Llama-based
-models, and the test does not tell which property of the recipe is responsible. All of
+choice between RTN and GPTQ at 4 bits. In exploratory tests, calibrating on in-domain
+candidates instead of generic text substantially reduced this loss for both models that
+had failed, from $-13.15$ to $-3.75$\pp\ for the 1.7B ORM and from $-12.60$ to
+$-2.80$\pp\ for Tulu-3. The 8B ORM and the PRM, which lost little to begin with, moved
+to $-0.05$ and $-0.60$\pp. A length-matched generic control did not help, so the
+content of the calibration text matters, although we cannot say whether its domain or
+its format is responsible. At 3 bits, the calibration recipe matters as much as the bit
+width. All of
 these conclusions are specific to the tested checkpoints, quantization recipes, scoring
 rule and mathematical tasks.
 
@@ -65,8 +67,8 @@ retention is untested outside the Qwen-based verifiers. Accuracy experiments use
 simulated quantization. Packed 4-bit kernels agreed with it on 98.8--99.2\% of selected
 answers, and memory and throughput were measured for one scoring workload without the
 generator. The confirmatory GPTQ results use generic calibration with a single
-calibration draw, and in-domain calibration was tested only at 3 bits and for two
-verifiers. The tasks are GSM8K and MATH, whose test problems may have been seen during
+calibration draw, and in-domain calibration was tested only at 3 bits, for four
+verifiers and with one calibration draw. The tasks are GSM8K and MATH, whose test problems may have been seen during
 pre-training of the generators and verifiers. Because BF16 and quantized verifiers
 score the same frozen pools, any exposure is shared by design, but it may alter pool
 redundancy and verifier advantage and could interact with quantization. Candidates were

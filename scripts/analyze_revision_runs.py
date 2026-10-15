@@ -100,18 +100,30 @@ def main():
     print(A.round(4).to_string(index=False))
 
     rows = []
-    for v in ("sky-1.7b", "sky-8b"):
+    # B (amendment 5) and B2/B3 (amendment 6): in-domain W3 calibration and its length control
+    for v in ("sky-1.7b", "sky-8b", "prm-7b", "tulu-8b"):
         S0, C, K, q = score_matrix(ST, "qwen2.5-1.5b", v, "bf16", "eval")
         g = load("qwen2.5-1.5b", v, "gptq-w3")
         m = load("qwen2.5-1.5b", v, "gptq-w3-math")
-        if m is None:
+        if m is None or g is None:
             continue
         a0, ag, am = acc(S0, C), acc(g[0], C), acc(m[0], C)
-        dm, dd = boot(am - a0), boot(am - ag)
-        rows.append({"verifier": v, "acc_bf16": a0.mean(), "acc_w3_generic": ag.mean(), "acc_w3_math": am.mean(),
-                     "delta_math": dm["estimate"], "delta_math_lo": dm["ci_low"], "delta_math_hi": dm["ci_high"],
-                     "math_minus_generic": dd["estimate"], "mmg_lo": dd["ci_low"], "mmg_hi": dd["ci_high"],
-                     **transitions(S0, m[0], C, K)})
+        dg, dm, dd = boot(ag - a0), boot(am - a0), boot(am - ag)
+        row = {"verifier": v, "acc_bf16": a0.mean(), "acc_w3_generic": ag.mean(), "acc_w3_math": am.mean(),
+               "delta_generic": dg["estimate"], "delta_generic_lo": dg["ci_low"], "delta_generic_hi": dg["ci_high"],
+               "delta_math": dm["estimate"], "delta_math_lo": dm["ci_low"], "delta_math_hi": dm["ci_high"],
+               "math_minus_generic": dd["estimate"], "mmg_lo": dd["ci_low"], "mmg_hi": dd["ci_high"],
+               **transitions(S0, m[0], C, K)}
+        gl = load("qwen2.5-1.5b", v, "gptq-w3-genlen")
+        if gl is not None:
+            al = acc(gl[0], C)
+            dl, dlg, dml = boot(al - a0), boot(al - ag), boot(am - al)
+            row.update({"acc_w3_genlen": al.mean(),
+                        "delta_genlen": dl["estimate"], "delta_genlen_lo": dl["ci_low"], "delta_genlen_hi": dl["ci_high"],
+                        "genlen_minus_generic": dlg["estimate"], "glg_lo": dlg["ci_low"], "glg_hi": dlg["ci_high"],
+                        "math_minus_genlen": dml["estimate"], "mml_lo": dml["ci_low"], "mml_hi": dml["ci_high"],
+                        "genlen_answer_change": transitions(S0, gl[0], C, K)["answer_change"]})
+        rows.append(row)
     B = pd.DataFrame(rows)
     B.to_csv(OUT / "runs_B.csv", index=False)
     print(B.round(4).to_string(index=False))
