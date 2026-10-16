@@ -1,4 +1,4 @@
-"""Analyses requested by the third external review (all on existing scores, no GPU).
+"""Additional analyses on existing scores (no GPU).
 
 1. c1 equivalence: TOST at the registered +-3 pp margin (90% bootstrap CI), with
    the per-question vector used for c1 in the registered report.
@@ -8,7 +8,6 @@
 4. 'Contested' questions: harm/benefit by BF16 answer-redundancy bin with
    denominators and bootstrap CIs, strict and lenient graders (bins fixed after
    first inspection: exploratory).
-5. Confusion matrix of the 50-item blinded format audit.
 """
 import sys
 from pathlib import Path
@@ -114,15 +113,6 @@ def main():
     ct = pd.DataFrame(rows)
     ct.to_csv(OUT / "contested.csv", index=False)
     print(ct[ct.grader == "lenient"].round(4).to_string(index=False))
-
-    # 5. format-audit confusion matrix
-    key = pd.read_csv("outputs/tables/exploratory/audit/audit_key_DO_NOT_OPEN.csv")
-    ver = pd.read_csv("outputs/tables/exploratory/audit/audit_verdicts_blind.csv")
-    a = key.merge(ver, on="audit_id")
-    cm = pd.crosstab([a.dom, a.correct_lenient.map({True: "lenient: correct", False: "lenient: wrong"})],
-                     a.blind_correct.map({1: "audit: correct", 0: "audit: wrong"}))
-    cm.to_csv(OUT / "format_audit_confusion.csv")
-    print(cm)
 
 
 if __name__ == "__main__":

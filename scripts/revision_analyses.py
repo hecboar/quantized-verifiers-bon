@@ -1,4 +1,4 @@
-"""Analyses requested by the manuscript review (2026-10-14). CPU only, on stored scores.
+"""Revision analyses (2026-10-14). CPU only, on stored scores.
 
 1. majority.csv        verifier-independent majority vote@N (H6 rule: canonical clusters,
                        unparseable candidates do not vote, ties -> cluster appearing first
