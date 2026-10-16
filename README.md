@@ -1,61 +1,81 @@
-# Quantized verifiers in Best-of-N
+# Quantized reward-model verifiers in Best-of-N
 
-Code for the study of weight-quantized reward models / verifiers in Best-of-N
-mathematical answer selection, the memory-budgeted frontier, and
-Contrastive-Hessian GPTQ (CH-GPTQ). Design: `plan-neurocomputing.md`;
-confirmatory hypotheses and the evaluation-set extension: `docs/preregistration.md`.
+Code, analysis plans and analysis scripts for
 
-## Layout
+> H. Borobia, E. Seguí-Mas, G. Tormo-Carbó. *Quantized reward-model verifiers in Best-of-N
+> mathematical answer selection: accuracy, memory and value retention.* Submitted to
+> Neurocomputing.
 
-| Module | Role |
+The study scores frozen pools of 32 candidate solutions per problem (GSM8K and MATH) with
+reward-model verifiers in BF16 and after weight quantization (NF4, GPTQ 4/3-bit, AWQ,
+RTN), and asks whether Best-of-N accuracy, the verifier's advantage over majority vote
+and a memory-budgeted deployment survive quantization.
+
+Data (candidate pools, every verifier score, result tables):
+<https://huggingface.co/datasets/hecboar/quantized-verifiers-bon>.
+
+The version described in the submitted manuscript is the tag `v1.0-submission`.
+
+## Analysis plans
+
+The plans were fixed in this repository before the corresponding data existed; the
+commit history is the timestamped record (see Table C.8 of the paper).
+
+| File | Content |
 |---|---|
-| `vq.grading` | final-answer extraction and correctness (fixed before scoring) |
-| `vq.data` | datasets and hashed, frozen manifests (`data/manifest_*.json`) |
-| `vq.generate` | candidate pools (vLLM) and annotation |
-| `vq.verifiers` | Skywork-Reward-V2 ORMs and Qwen2.5-Math-PRM scoring, batched |
-| `vq.quant.*` | fake-quant: RTN, NF4, GPTQ, CH-GPTQ (contrastive Hessian), AWQ-style; sequential application; packed GPTQ export |
-| `vq.calibration` | label-free calibration recipes: generic, random, DPQ-adapted, CH pairs, shuffled pairs |
-| `vq.selection`, `vq.metrics` | Best-of-N, weighted/majority vote, H_N/B_N, winner change, efficiency |
-| `vq.controls` | permutation (free / stratified) and Gaussian controls |
-| `vq.diagnostic` | C3 residual-model prediction of winner change |
-| `vq.stats` | paired bootstrap by question, Holm, TOST |
-| `vq.runner` | one scoring run end-to-end (resumable shards, audit) |
-| `vq.report` | paper tables (main, controls, C3, frontier, confirmatory) |
-| `vq.pod`, `scripts/pod.py` | RunPod launcher (dry run by default) |
-| `configs/experiment.yaml` | the full grid — single source of truth |
+| `docs/preregistration.md` | Main study: design, populations, contrasts c1–c5, statistics, amendments and deviations |
+| `docs/preregistration_h6.md`, `docs/h6_results.md` | H6: stronger generator on new MATH Level-5 problems |
+| `docs/preregistration_h7.md`, `docs/h7_results.md` | H7: value retention on new MATH Level-4/5 problems |
+| `docs/preregistration_rev.md` | Exploratory revision experiments (amendments 5 and 6) with execution records |
+| `configs/experiment.yaml` | Every condition and scoring run (single source of truth) |
+| `data/manifest_*.json` | Frozen problem manifests with hashes |
 
-## Local (CPU)
+## Reproducing the paper without a GPU
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-pytest                      # unit + integration tests (tiny random models)
-pytest -m network           # real-checkpoint checks on CPU (downloads Skywork 0.6B)
-python -m vq.cli plan       # campaigns and cost forecast
+# download the data next to the code
+python -c "from huggingface_hub import snapshot_download; snapshot_download('hecboar/quantized-verifiers-bon', repo_type='dataset', local_dir='outputs')"
+cp outputs/data/items.jsonl outputs/data/math_levels.json data/
 ```
 
-`.env` must define `HF_TOKEN` and `RUNPOD_API_KEY` (never committed).
+| Paper item | Command |
+|---|---|
+| Main tables, confirmatory c1–c5 (Tables 2–3) | `python -m vq.cli analyze --generator qwen2.5-1.5b` |
+| H6 and H7 confirmatory tests | `python scripts/analyze_h6.py` (see the script header for the H7 arguments) |
+| Majority vote, answer transitions, selection-rule controls (Table 5, Section 4.7) | `python scripts/revision_analyses.py` |
+| Llama-based ORMs, 3-bit calibration, memory and throughput (Tables 4, 6, 7) | `python scripts/analyze_revision_runs.py` |
+| Packed vs simulated GPTQ, oracle, c1 TOST | `python scripts/review3_analyses.py` |
+| Answer-format decomposition, lenient grader | `python scripts/exploratory_format.py` |
+| GSM8K-Platinum labels and truncation sensitivity | `python scripts/sensitivity_labels_truncation.py` |
+| Human audit of the outcome measure (Appendix B) | `python scripts/analyze_c2_audit.py` |
+| Figures 1–4 | `python scripts/make_figures.py` |
 
-## RunPod runbook
+Tests: `pytest` (unit and integration tests on tiny random models; `pytest -m network`
+adds real-checkpoint checks on CPU).
 
-Each step: `python scripts/pod.py launch --step "<vq.cli args>" --hours H --yes`, then
-`python scripts/pod.py watch --pod <id>` (fetches, merges without overwriting, deletes the pod).
-The printed cost is the worst case (hard cap + 60 min grace). Grid steps are refused until
-`outputs/gate.json` says `go`.
+## Regenerating pools and scores (GPU)
 
-| # | Step (`--step`) | Cap (h) | Must check before continuing |
-|---|---|---|---|
-| 0 | `pilot --generator qwen2.5-1.5b` (then `qwen2.5-math-1.5b`) | 3 | `PILOT OK`; batched-vs-single parity within 25 % of the score scale (BF16 noise is measured by the `bf16-null` control in phase 3), `rtn_runs` all ok (incl. PRM), generation speed measured by the generation itself; re-run `plan` locally |
-| 0b | `export-packed --verifier sky-4b` (extras `gpu,packed`), `score-deployed --scheme gptq-w4` and `--scheme nf4` on the gate split, then locally `parity` | 3 | fake-quant vs deployment score parity and winner agreement |
-| 1 | `generate --generator G --split dev`; `annotate`; `score --phase phase3_main --generator G --only sky-4b --conditions bf16,nf4,gptq-w4 --dev-only`; locally `gate --generator G --projected-eur <plan>` | 6 | `outputs/gate.json` go=true |
-| 2 | `generate --generator G --split eval`; `generate --generator llama3.2-3b --split gen2`; `annotate` | 12 | parse / truncation rates |
-| 5a | `select-lambda --generator G --verifier sky-4b` | 3 | `outputs/frozen_lambda.json` |
-| 3 | `score --phase phase3_main --generator G` | 36 | every run JSON: `audit.head_or_embed_changed: false` |
-| 5 | `score --phase phase5_ch --generator G` | 30 | 20 runs done |
-| 4 | `score --phase phase4_gen2 --generator G` | 6 | transfer runs use `calib_generator = G` |
-| 6 | `export-packed` (4B, 8B); `score-deployed --scheme gptq-w4` (4B, 8B) and `--scheme nf4` (1.7B/4B/8B); `measure-memory` | 8 | `outputs/memory.json`; `parity` reports |
+Generation (vLLM) and scoring ran on single cloud GPUs (mostly RTX 4090) through
+`scripts/pod.py`, which launches a RunPod pod for one `vq.cli` step, fetches the outputs
+and deletes the pod. `.env` must define `HF_TOKEN` and `RUNPOD_API_KEY`; it is never
+committed. Every scoring run is fingerprinted, so resuming or reusing a run with any
+different input fails instead of mixing results.
 
-Then locally: `python -m vq.cli analyze --generator G` -> `outputs/tables/`.
+| Module | Role |
+|---|---|
+| `vq.grading` | final-answer extraction and correctness (strict and lenient graders) |
+| `vq.data` | datasets and hashed, frozen manifests |
+| `vq.generate` | candidate pools (vLLM) and annotation |
+| `vq.verifiers` | ORM and PRM scoring, batched |
+| `vq.quant.*` | simulated quantization (RTN, NF4, GPTQ, AWQ) and packed GPTQ export |
+| `vq.calibration` | calibration recipes (generic, in-domain, length-matched, DPQ-adapted, CH) |
+| `vq.selection`, `vq.metrics` | Best-of-N, majority and weighted vote, transitions |
+| `vq.stats` | paired bootstrap by problem, TOST, Holm |
+| `vq.runner` | one scoring run end-to-end (resumable shards, quantization audit) |
+| `vq.memory_bench` | peak memory and throughput of deployed verifiers |
+| `vq.pod`, `scripts/pod.py` | RunPod launcher |
 
-Rules: never edit manifests or `configs/experiment.yaml` after phase 1 without logging the change;
-never cut evaluation questions, seeds or controls silently. Runs are fingerprinted: resuming or
-reusing a run after changing its inputs or settings fails on purpose.
+## Licence
+
+Code: MIT. Data: see the dataset card on Hugging Face.
