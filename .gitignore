@@ -20,3 +20,17 @@ paper/*.out
 paper/*.spl
 paper/build.log
 submission_neurocomputing/
+
+# internal working files (kept locally, not published)
+plan-contexto.txt
+plan-neurocomputing-v1.md
+plan-neurocomputing.md
+paper/review_prompt_astra.md
+paper/review_prompt_astra_round2.md
+paper/review_prompt_gemini.md
+docs/review3_fixes.md
+docs/paper_outline.md
+docs/exploratory_format.md
+scripts/build_format_audit.py
+openreview.pdf
+paper de neurocomputing ejemplo.pdf
