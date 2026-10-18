@@ -1,5 +1,5 @@
-GPTQ-W4 meets prespecified Best-of-32 accuracy-equivalence bounds
-A 4-bit PRM retains an estimated 93% of its advantage on new hard problems
-Packed 4-bit weights win the tested verifier-only memory comparison
-Frequent candidate changes coexist with small aggregate accuracy changes
-Answer-format errors of strict graders inflate estimated quantization gains
+4-bit GPTQ verifiers stay within prespecified Best-of-N accuracy-equivalence bounds
+Where verifiers beat majority vote, a 4-bit PRM keeps an estimated 93% of its lead
+Under a 6 GiB budget, a 4-bit 4B verifier beats the best tested full-precision one
+In-domain calibration recovers most of the 3-bit loss where generic calibration fails
+Strict answer grading can turn reward-model format preferences into spurious gains
